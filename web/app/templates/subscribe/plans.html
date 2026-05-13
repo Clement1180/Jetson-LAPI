@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}LAPI - {{ parking.name }}{% endblock %}
+
+{% block nav %}
+<nav>
+  <a href="/subscribe/parkings" class="brand">LAPI</a>
+  <div class="nav-right">
+    <a href="/subscribe/account">Mon compte</a>
+    <a href="/logout">Deconnexion</a>
+  </div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="/subscribe/parkings">Parkings</a> &rsaquo; {{ parking.name }}
+</div>
+
+<div class="page-header">
+  <h1>Abonnements - {{ parking.name }}</h1>
+</div>
+
+{% if parking.address %}
+  <p style="color:var(--gray-600); margin-bottom:1.5rem;">{{ parking.address }}</p>
+{% endif %}
+
+{% if plans %}
+<div class="plans-grid">
+  {% for plan in plans %}
+  <div class="card plan-card">
+    <div class="plan-header">
+      <h2 style="border:none; margin:0; padding:0;">{{ plan.name }}</h2>
+      <span class="badge badge-info">{{ duration_labels[plan.duration] }}</span>
+    </div>
+    <div class="plan-price">
+      <span class="price-amount">{{ "%.2f"|format(plan.price_cents / 100) }}</span>
+      <span class="price-currency">&euro;</span>
+    </div>
+    <form method="post" action="/subscribe/checkout/{{ plan.id }}">
+      {% if plan.auto_renew_allowed %}
+      <label class="checkbox-label" style="margin-bottom:1rem;">
+        <input type="checkbox" name="auto_renew" value="true">
+        Renouvellement automatique
+      </label>
+      {% endif %}
+      <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center;">
+        Souscrire
+      </button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card">
+  <p style="text-align:center; color:var(--gray-400); padding:2rem;">
+    Aucune offre disponible pour ce parking.
+  </p>
+</div>
+{% endif %}
+{% endblock %}

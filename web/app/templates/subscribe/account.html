@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}LAPI - Mon compte{% endblock %}
+
+{% block nav %}
+<nav>
+  <a href="/subscribe/parkings" class="brand">LAPI</a>
+  <div class="nav-right">
+    <span>{{ subscriber.first_name }} {{ subscriber.last_name }}</span>
+    <a href="/logout">Deconnexion</a>
+  </div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Mon compte</h1>
+  <a href="/subscribe/parkings" class="btn btn-primary">Nouvel abonnement</a>
+</div>
+
+<div class="stats">
+  <div class="stat-card">
+    <div class="stat-value">{{ subscriber.plate }}</div>
+    <div class="stat-label">Ma plaque</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ subscriptions|selectattr('status', 'equalto', SubscriptionStatus.ACTIVE)|list|length }}</div>
+    <div class="stat-label">Abonnements actifs</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Mes abonnements</h2>
+  {% if subscriptions %}
+  <table>
+    <thead>
+      <tr>
+        <th>Parking</th>
+        <th>Formule</th>
+        <th>Duree</th>
+        <th>Debut</th>
+        <th>Fin</th>
+        <th>Statut</th>
+        <th>Renouvellement</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for sub in subscriptions %}
+      {% set remaining_days = ((sub.end_date - now) / 86400)|int %}
+      <tr>
+        <td>{{ sub.plan.parking.name }}</td>
+        <td>{{ sub.plan.name }}</td>
+        <td>{{ duration_labels[sub.plan.duration] }}</td>
+        <td>{{ sub.start_date|int|timestamp_to_date }}</td>
+        <td>{{ sub.end_date|int|timestamp_to_date }}</td>
+        <td>
+          {% if sub.status == SubscriptionStatus.ACTIVE %}
+            <span class="badge badge-success">Actif</span>
+            {% if remaining_days <= 7 and remaining_days >= 0 %}
+              <span class="badge badge-warning-light">{{ remaining_days }}j restant{{ 's' if remaining_days > 1 }}</span>
+            {% endif %}
+          {% elif sub.status == SubscriptionStatus.EXPIRED %}
+            <span class="badge badge-danger">Expire</span>
+          {% elif sub.status == SubscriptionStatus.CANCELLED %}
+            <span class="badge badge-danger">Annule</span>
+          {% elif sub.status == SubscriptionStatus.PAST_DUE %}
+            <span class="badge" style="background:#fef3c7;color:#92400e;">Impaye</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if sub.status == SubscriptionStatus.ACTIVE %}
+            <form method="post" action="/subscribe/toggle-renew/{{ sub.id }}" style="display:inline;">
+              {% if sub.auto_renew %}
+                <button type="submit" class="btn btn-sm btn-outline" title="Desactiver le renouvellement auto">Auto &#10003;</button>
+              {% else %}
+                <button type="submit" class="btn btn-sm btn-outline" title="Activer le renouvellement auto">Manuel</button>
+              {% endif %}
+            </form>
+          {% else %}
+            -
+          {% endif %}
+        </td>
+        <td>
+          {% if sub.status == SubscriptionStatus.ACTIVE %}
+            <form method="post" action="/subscribe/cancel/{{ sub.id }}" style="display:inline;"
+                  onsubmit="return confirm('Annuler cet abonnement ?');">
+              <button type="submit" class="btn btn-sm btn-danger">Annuler</button>
+            </form>
+          {% elif sub.status == SubscriptionStatus.EXPIRED %}
+            <a href="/subscribe/parking/{{ sub.plan.parking_id }}" class="btn btn-sm btn-primary">Renouveler</a>
+          {% else %}
+            -
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <tr class="empty-row">
+    <td colspan="8">Aucun abonnement. <a href="/subscribe/parkings">Parcourir les parkings</a></td>
+  </tr>
+  {% endif %}
+</div>
+{% endblock %}

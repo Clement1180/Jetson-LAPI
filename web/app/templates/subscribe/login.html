@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LAPI - Connexion abonne</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="login-wrapper">
+    <div class="login-card">
+      <h1>LAPI</h1>
+      <p class="subtitle">Espace abonne</p>
+      {% if error %}
+        <div class="error-msg">{{ error }}</div>
+      {% endif %}
+      <form method="post" action="/subscribe/login">
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" required autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label for="password">Mot de passe</label>
+          <input type="password" id="password" name="password" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-primary">Se connecter</button>
+      </form>
+      <p style="text-align:center; margin-top:1rem; font-size:0.85rem; color:var(--gray-600);">
+        Pas encore de compte ? <a href="/subscribe/register">S'inscrire</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>

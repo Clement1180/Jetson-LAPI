@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}LAPI - Plans {{ parking.name }}{% endblock %}
+
+{% block nav %}
+<nav>
+  <a href="/dashboard" class="brand">LAPI</a>
+  <div class="nav-right">
+    <span>{{ user.username }}</span>
+    <a href="/logout">Deconnexion</a>
+  </div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="/dashboard">Parkings</a> &rsaquo;
+  <a href="/dashboard/parking/{{ parking.id }}">{{ parking.name }}</a> &rsaquo;
+  Plans d'abonnement
+</div>
+
+<div class="page-header">
+  <h1>Plans d'abonnement - {{ parking.name }}</h1>
+</div>
+
+<div class="card">
+  <h2>Ajouter un plan</h2>
+  <form method="post" action="/dashboard/parking/{{ parking.id }}/plans/add">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="name">Nom du plan</label>
+        <input type="text" id="name" name="name" required placeholder="Ex: Mensuel standard">
+      </div>
+      <div class="form-group">
+        <label for="duration">Duree</label>
+        <select id="duration" name="duration" style="padding:0.45rem 0.75rem; border:1px solid var(--gray-200); border-radius:var(--radius); font-size:0.9rem;">
+          {% for d in durations %}
+          <option value="{{ d.value }}">{{ duration_labels[d] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="price">Prix (&euro;)</label>
+        <input type="text" id="price" name="price" required placeholder="29.90" style="width:100px;">
+      </div>
+      <div class="form-group" style="justify-content:end;">
+        <label class="checkbox-label">
+          <input type="checkbox" name="auto_renew_allowed" value="true" checked>
+          Renouvellement auto
+        </label>
+      </div>
+      <div class="form-group" style="justify-content:end;">
+        <button type="submit" class="btn btn-primary">Ajouter</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Plans existants</h2>
+  {% if plans %}
+  <table>
+    <thead>
+      <tr>
+        <th>Nom</th>
+        <th>Duree</th>
+        <th>Prix</th>
+        <th>Renouvellement auto</th>
+        <th>Abonnes actifs</th>
+        <th>Statut</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for plan in plans %}
+      <tr>
+        <td>{{ plan.name }}</td>
+        <td>{{ duration_labels[plan.duration] }}</td>
+        <td>{{ "%.2f"|format(plan.price_cents / 100) }} &euro;</td>
+        <td>{{ "Oui" if plan.auto_renew_allowed else "Non" }}</td>
+        <td>{{ active_sub_counts.get(plan.id, 0) }}</td>
+        <td>
+          {% if plan.is_active %}
+            <span class="badge badge-success">Actif</span>
+          {% else %}
+            <span class="badge badge-danger">Inactif</span>
+          {% endif %}
+        </td>
+        <td>
+          <form method="post" action="/dashboard/parking/{{ parking.id }}/plans/{{ plan.id }}/toggle" style="display:inline;">
+            <button type="submit" class="btn btn-sm btn-outline">
+              {{ "Desactiver" if plan.is_active else "Activer" }}
+            </button>
+          </form>
+          {% if active_sub_counts.get(plan.id, 0) == 0 %}
+          <form method="post" action="/dashboard/parking/{{ parking.id }}/plans/{{ plan.id }}/delete" style="display:inline;"
+                onsubmit="return confirm('Supprimer ce plan ?');">
+            <button type="submit" class="btn btn-sm btn-danger">Supprimer</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-row" style="text-align:center; color:var(--gray-400); padding:2rem;">
+    Aucun plan configure. Ajoutez votre premier plan ci-dessus.
+  </p>
+  {% endif %}
+</div>
+{% endblock %}

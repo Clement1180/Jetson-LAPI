@@ -9,7 +9,7 @@ from jose import jwt, JWTError
 from sqlalchemy.orm import Session
 
 from .config import SECRET_KEY, ALGORITHM, TOKEN_EXPIRE_MINUTES
-from .models import Admin, TenantUser
+from .models import Admin, TenantUser, Subscriber
 
 
 def hash_password(password: str) -> str:
@@ -77,5 +77,22 @@ def require_admin(request: Request) -> dict:
 def require_tenant(request: Request) -> dict:
     user = get_current_user(request)
     if not user or user.get("role") != "tenant":
+        raise NotAuthenticated()
+    return user
+
+
+def authenticate_subscriber(db: Session, email: str, password: str) -> Optional[Subscriber]:
+    sub = db.query(Subscriber).filter(
+        Subscriber.email == email,
+        Subscriber.is_active == True
+    ).first()
+    if sub and verify_password(password, sub.password_hash):
+        return sub
+    return None
+
+
+def require_subscriber(request: Request) -> dict:
+    user = get_current_user(request)
+    if not user or user.get("role") != "subscriber":
         raise NotAuthenticated()
     return user

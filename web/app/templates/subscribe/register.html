@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LAPI - Inscription</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="login-wrapper">
+    <div class="login-card" style="max-width:440px;">
+      <h1>LAPI</h1>
+      <p class="subtitle">Creer un compte abonne</p>
+      {% if error %}
+        <div class="error-msg">{{ error }}</div>
+      {% endif %}
+      <form method="post" action="/subscribe/register">
+        <div class="form-row" style="gap:0.5rem; margin-bottom:0;">
+          <div class="form-group" style="flex:1;">
+            <label for="first_name">Prenom</label>
+            <input type="text" id="first_name" name="first_name" required>
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label for="last_name">Nom</label>
+            <input type="text" id="last_name" name="last_name" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" required autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label for="plate">Plaque d'immatriculation</label>
+          <input type="text" id="plate" name="plate" required class="plate-input" placeholder="AA-123-AA">
+        </div>
+        <div class="form-group">
+          <label for="password">Mot de passe</label>
+          <input type="password" id="password" name="password" required minlength="6" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label for="password_confirm">Confirmer le mot de passe</label>
+          <input type="password" id="password_confirm" name="password_confirm" required minlength="6" autocomplete="new-password">
+        </div>
+        <button type="submit" class="btn btn-primary">Creer mon compte</button>
+      </form>
+      <p style="text-align:center; margin-top:1rem; font-size:0.85rem; color:var(--gray-600);">
+        Deja un compte ? <a href="/subscribe/login">Se connecter</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}LAPI - Paiement confirme{% endblock %}
+
+{% block nav %}
+<nav>
+  <a href="/subscribe/parkings" class="brand">LAPI</a>
+  <div class="nav-right">
+    <a href="/subscribe/account">Mon compte</a>
+    <a href="/logout">Deconnexion</a>
+  </div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div style="text-align:center; padding:3rem 0;">
+  <div style="font-size:3rem; margin-bottom:1rem;">&#10003;</div>
+  <h1 style="margin-bottom:0.5rem;">Abonnement active !</h1>
+  <p style="color:var(--gray-600); margin-bottom:2rem;">
+    Votre plaque a ete ajoutee a la whitelist du parking. L'acces est immediat.
+  </p>
+  <a href="/subscribe/account" class="btn btn-primary">Voir mon compte</a>
+</div>
+{% endblock %}

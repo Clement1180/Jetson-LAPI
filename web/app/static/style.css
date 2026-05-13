@@ -279,9 +279,84 @@ input:focus { border-color: var(--primary); }
   padding: 0.2rem 0.5rem;
 }
 
+/* PLANS GRID */
+.plans-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1.5rem;
+}
+.plan-card {
+  text-align: center;
+  transition: box-shadow 0.15s;
+}
+.plan-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+.plan-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.plan-price {
+  margin: 1.5rem 0;
+}
+.price-amount {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+.price-currency {
+  font-size: 1.2rem;
+  color: var(--gray-600);
+  vertical-align: super;
+}
+
+/* PARKING GRID */
+.parking-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 1.5rem;
+}
+
+/* CHECKBOX */
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--gray-600);
+  cursor: pointer;
+}
+.checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+}
+
+/* SELECT */
+select {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  outline: none;
+  background: var(--white);
+}
+select:focus { border-color: var(--primary); }
+
+/* WARNING BADGE */
+.badge-warning-light {
+  background: #fef3c7;
+  color: #92400e;
+}
+
 /* RESPONSIVE */
 @media (max-width: 768px) {
   .container { padding: 0 1rem; }
   .form-row { flex-direction: column; }
   .page-header { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+  .plans-grid { grid-template-columns: 1fr; }
+  .parking-grid { grid-template-columns: 1fr; }
 }

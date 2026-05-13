@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..auth import require_tenant
-from ..models import Tenant, Parking, Device, WhitelistEntry
+from ..models import Tenant, Parking, Device, WhitelistEntry, SubscriptionPlan, Subscription, PlanDuration, SubscriptionStatus
 from ..mqtt_publisher import publish_plate_add, publish_plate_remove, publish_whitelist_sync
 from .access import generate_totp_qr
 
@@ -119,3 +119,106 @@ def sync_whitelist(request: Request, device_id: int, db: Session = Depends(get_d
     publish_whitelist_sync(device.mqtt_client_id, plates)
 
     return RedirectResponse(url=f"/dashboard/device/{device_id}", status_code=303)
+
+
+DURATION_LABELS = {
+    PlanDuration.DAILY: "Journalier",
+    PlanDuration.WEEKLY: "Hebdomadaire",
+    PlanDuration.MONTHLY: "Mensuel",
+    PlanDuration.QUARTERLY: "Trimestriel",
+    PlanDuration.YEARLY: "Annuel",
+}
+
+
+@router.get("/parking/{parking_id}/plans", response_class=HTMLResponse)
+def parking_plans(request: Request, parking_id: int, db: Session = Depends(get_db)):
+    user = require_tenant(request)
+    parking = db.query(Parking).filter(
+        Parking.id == parking_id,
+        Parking.tenant_id == user["tenant_id"],
+    ).first()
+    if not parking:
+        return RedirectResponse(url="/dashboard", status_code=303)
+
+    plans = db.query(SubscriptionPlan).filter(
+        SubscriptionPlan.parking_id == parking_id,
+    ).order_by(SubscriptionPlan.created_at.desc()).all()
+
+    active_sub_counts = {}
+    for plan in plans:
+        count = db.query(Subscription).filter(
+            Subscription.plan_id == plan.id,
+            Subscription.status == SubscriptionStatus.ACTIVE,
+        ).count()
+        active_sub_counts[plan.id] = count
+
+    return templates.TemplateResponse(request, "dashboard/plans.html", {
+        "user": user, "parking": parking, "plans": plans,
+        "duration_labels": DURATION_LABELS,
+        "durations": list(PlanDuration),
+        "active_sub_counts": active_sub_counts,
+    })
+
+
+@router.post("/parking/{parking_id}/plans/add")
+def add_plan(request: Request, parking_id: int,
+             name: str = Form(...), duration: str = Form(...),
+             price: str = Form(...), auto_renew_allowed: bool = Form(False),
+             db: Session = Depends(get_db)):
+    user = require_tenant(request)
+    parking = db.query(Parking).filter(
+        Parking.id == parking_id,
+        Parking.tenant_id == user["tenant_id"],
+    ).first()
+    if not parking:
+        return RedirectResponse(url="/dashboard", status_code=303)
+
+    price_cents = int(float(price.replace(",", ".")) * 100)
+    plan = SubscriptionPlan(
+        parking_id=parking_id,
+        name=name,
+        duration=PlanDuration(duration),
+        price_cents=price_cents,
+        auto_renew_allowed=auto_renew_allowed,
+    )
+    db.add(plan)
+    db.commit()
+    return RedirectResponse(url=f"/dashboard/parking/{parking_id}/plans", status_code=303)
+
+
+@router.post("/parking/{parking_id}/plans/{plan_id}/toggle")
+def toggle_plan(request: Request, parking_id: int, plan_id: int,
+                db: Session = Depends(get_db)):
+    user = require_tenant(request)
+    plan = db.query(SubscriptionPlan).filter(
+        SubscriptionPlan.id == plan_id,
+        SubscriptionPlan.parking_id == parking_id,
+    ).first()
+    if plan:
+        parking = db.query(Parking).filter(
+            Parking.id == parking_id,
+            Parking.tenant_id == user["tenant_id"],
+        ).first()
+        if parking:
+            plan.is_active = not plan.is_active
+            db.commit()
+    return RedirectResponse(url=f"/dashboard/parking/{parking_id}/plans", status_code=303)
+
+
+@router.post("/parking/{parking_id}/plans/{plan_id}/delete")
+def delete_plan(request: Request, parking_id: int, plan_id: int,
+                db: Session = Depends(get_db)):
+    user = require_tenant(request)
+    plan = db.query(SubscriptionPlan).filter(
+        SubscriptionPlan.id == plan_id,
+        SubscriptionPlan.parking_id == parking_id,
+    ).first()
+    if plan:
+        parking = db.query(Parking).filter(
+            Parking.id == parking_id,
+            Parking.tenant_id == user["tenant_id"],
+        ).first()
+        if parking:
+            db.delete(plan)
+            db.commit()
+    return RedirectResponse(url=f"/dashboard/parking/{parking_id}/plans", status_code=303)

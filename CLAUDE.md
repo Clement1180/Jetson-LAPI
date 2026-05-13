@@ -11,9 +11,9 @@ Dispositif B2B de contrôle d'accès parking par reconnaissance de plaques. Arch
 │  CLOUD (SaaS)                                                   │
 │  FastAPI + Jinja2 + SQLAlchemy                                  │
 │  Multi-tenant: Admin → Tenants → Parkings → Devices → Whitelist │
-│  Publie sur MQTT: lapi/{device_id}/whitelist/{add|remove|sync}  │
+│  Publie sur MQTTs: lapi/{device_id}/whitelist/{add|remove|sync}  │
 └──────────────────────────┬──────────────────────────────────────┘
-                           │ MQTT (sortant uniquement)
+                           │ MQTTs (sortant uniquement)
 ┌──────────────────────────▼──────────────────────────────────────┐
 │  EDGE (Jetson)                                                   │
 │  Mosquitto local (127.0.0.1) + bridge sortant vers cloud         │
@@ -39,7 +39,7 @@ python/                    # Code edge (embarqué Jetson)
     validation.py          # Regex plaque FR + vote multi-trames
     database.py            # SQLite whitelist (cache mémoire, lookup <1µs)
     gpio.py                # Relais GPIO Jetson (pulse + cooldown)
-    mqtt_client.py         # Subscriber MQTT (whitelist + OTA + accès distant)
+    mqtt_client.py         # Subscriber MQTTs (whitelist + OTA + accès distant)
     camera.py              # Capture temps réel (GStreamer CSI/V4L2/USB)
     watchdog.py            # Monitoring mémoire + heartbeat
     ota_handler.py         # Mise à jour OTA (download, SHA256, backup, rollback)
@@ -50,16 +50,22 @@ web/                       # Plateforme web SaaS
     main.py                # FastAPI app + lifespan
     config.py              # Settings (env vars, OTA_STORAGE_DIR, WEB_BASE_URL)
     database.py            # SQLAlchemy + SQLite/PostgreSQL
-    models.py              # ORM: Admin, Tenant, TenantUser, Parking, Device, WhitelistEntry
-    auth.py                # JWT cookies + hash password
+    models.py              # ORM: Admin, Tenant, TenantUser, Parking, Device, WhitelistEntry, Subscriber, SubscriptionPlan, Subscription
+    auth.py                # JWT cookies + hash password (3 rôles: admin/tenant/subscriber)
     mqtt_publisher.py      # Publie vers les devices via MQTT (whitelist + OTA + accès)
+    config.py              # Settings (env vars, Stripe keys, OTA_STORAGE_DIR, WEB_BASE_URL)
+    database.py            # SQLAlchemy + SQLite/PostgreSQL
+    templates_env.py       # Jinja2 templates partagé + filtre timestamp_to_date
+    subscription_sync.py   # Sync abonnement → whitelist MQTT + vérification expirations
     routers/
-      auth_routes.py       # Login/logout
+      auth_routes.py       # Login/logout (admin, tenant, subscriber register/login)
       admin.py             # CRUD tenants/users/parkings/devices + OTA upload/push
-      dashboard.py         # Gestion whitelist avec owner_name + QR TOTP
+      dashboard.py         # Gestion whitelist + CRUD plans d'abonnement par parking
       access.py            # Page publique accès QR code (plaque + nom + TOTP optionnel)
+      subscribe.py         # Espace abonné: liste parkings, plans, checkout Stripe, compte, annulation
+      stripe_webhook.py    # Webhook Stripe (checkout.session.completed, invoice.payment_failed)
     templates/
-      login.html           # Page de connexion
+      login.html           # Page de connexion (admin/tenant)
       base.html            # Layout de base
       admin/
         tenants.html        # Liste des clients
@@ -67,12 +73,20 @@ web/                       # Plateforme web SaaS
         ota.html            # Upload et liste des packages OTA
       dashboard/
         parkings.html       # Vue parkings du tenant
-        parking_detail.html # Détail parking
+        parking_detail.html # Détail parking + lien gestion abonnements
         device_whitelist.html # Whitelist avec QR TOTP
+        plans.html          # CRUD plans d'abonnement (prix, durée, renouvellement)
+      subscribe/
+        register.html       # Inscription abonné (email, plaque, mot de passe)
+        login.html          # Connexion abonné
+        parkings.html       # Liste des parkings avec abonnements disponibles
+        plans.html          # Choix du plan + option renouvellement auto
+        account.html        # Compte abonné (abonnements actifs, annulation, toggle renew)
+        success.html        # Confirmation paiement / activation
       access/
         form.html           # Page publique d'accès par QR code
     static/
-      style.css             # CSS minimaliste
+      style.css             # CSS (+ grilles plans/parkings, checkboxes, badges warning)
       ota/                  # Stockage des packages OTA uploadés
 
 deploy/                    # Filesystem embarqué Jetson
@@ -87,7 +101,7 @@ deploy/                    # Filesystem embarqué Jetson
       conf.d/bridge-cloud.conf  # Bridge sortant (whitelist + OTA + access)
     systemd/system/
       lapi.service         # Restart=always, MemoryMax=768M, WatchdogSec=60
-      mosquitto.service    # Broker MQTT local
+      mosquitto.service    # Broker MQTTs local
       lapi-healthcheck.*   # Timer + service de health check
     sudoers.d/lapi-ota     # Autorisation restart service pour OTA
     nftables.conf          # Firewall: DROP tout entrant (NFR6)
@@ -114,7 +128,7 @@ systemd/                   # (legacy, remplacé par deploy/etc/systemd/)
 - [x] Vote multi-trames (3 lectures cohérentes minimum, 60% consensus)
 - [x] SQLite whitelist avec cache mémoire (lookup 0.08µs)
 - [x] Déclenchement GPIO relais (pulse configurable + cooldown anti-rebond)
-- [x] Client MQTT subscriber (réception whitelist, reconnexion auto)
+- [x] Client MQTTs subscriber (réception whitelist, reconnexion auto)
 
 ### Edge (OTA)
 - [x] Handler OTA complet (download, vérification SHA256, backup, install, rollback)
@@ -127,10 +141,10 @@ systemd/                   # (legacy, remplacé par deploy/etc/systemd/)
 
 ### Web (SaaS)
 - [x] Multi-tenant: Admin → Tenants → Users → Parkings → Devices → Whitelist
-- [x] Auth JWT (cookies httponly, 2 rôles: admin/tenant)
+- [x] Auth JWT (cookies httponly, 3 rôles: admin/tenant/subscriber)
 - [x] Admin panel: CRUD complet (clients, comptes, parkings, dispositifs)
 - [x] Dashboard client: vue parkings + gestion whitelist par device
-- [x] MQTT publisher: notification temps réel au boîtier (add/remove/sync)
+- [x] MQTTs publisher: notification temps réel au boîtier (add/remove/sync)
 - [x] Interface propre (CSS custom, responsive)
 - [x] OTA: upload packages, push par device via MQTT, page admin dédiée
 - [x] Accès QR code fallback: page publique `/access/{parking_id}` (plaque + nom)
@@ -138,6 +152,20 @@ systemd/                   # (legacy, remplacé par deploy/etc/systemd/)
 - [x] Rate limiting sur la page d'accès (5 tentatives / 5 min par IP)
 - [x] Gestion owner_name + secret TOTP par entrée whitelist
 - [x] Génération QR code TOTP dans le dashboard (pour donner au propriétaire)
+
+### Web (Abonnements parking payant)
+- [x] Modèles: Subscriber (compte abonné), SubscriptionPlan (plan tarifaire), Subscription (abonnement)
+- [x] Inscription/connexion abonné (email + plaque d'immatriculation)
+- [x] Espace abonné: liste parkings disponibles, choix du plan, gestion compte
+- [x] Paiement Stripe: Checkout Session + webhook (checkout.session.completed, invoice.payment_failed)
+- [x] Mode dev sans Stripe: activation directe de l'abonnement (si STRIPE_SECRET_KEY vide)
+- [x] Plans configurables par le gestionnaire: nom, durée (jour/semaine/mois/trimestre/année), prix
+- [x] Renouvellement automatique optionnel (activable par l'abonné si le plan le permet)
+- [x] Sync abonnement → whitelist: activation = ajout plaque sur tous les devices du parking via MQTT
+- [x] Expiration automatique: tâche async toutes les 5 min, retire les plaques expirées
+- [x] Annulation d'abonnement avec retrait de la plaque de la whitelist
+- [x] Protection contre double-activation (vérification Stripe session_id unique)
+- [x] Dashboard tenant: page CRUD plans d'abonnement avec compteur abonnés actifs
 
 ### Déploiement
 - [x] install.sh (paquets, user, venv, configs, services, firewall)
@@ -166,7 +194,7 @@ systemd/                   # (legacy, remplacé par deploy/etc/systemd/)
 - [ ] HTTPS (Let's Encrypt / reverse proxy nginx)
 - [ ] Migration SQLite → PostgreSQL
 - [ ] Déploiement cloud (Docker, CI/CD)
-- [ ] Broker MQTT cloud (Mosquitto ou service managé type HiveMQ/EMQX)
+- [ ] Broker MQTTs cloud (Mosquitto ou service managé type HiveMQ/EMQX)
 - [ ] Sécurité: rate limiting, CSRF tokens, password policy
 
 ### Priorité 4 — Fonctionnalités additionnelles
@@ -174,7 +202,11 @@ systemd/                   # (legacy, remplacé par deploy/etc/systemd/)
 - [ ] Alertes (tentative d'accès refusée, boîtier hors ligne)
 - [x] OTA updates (mise à jour du firmware/modèles à distance)
 - [x] Accès QR code fallback (plaque + nom + TOTP optionnel)
+- [x] Abonnements parking payant (Stripe + gestion durée/renouvellement)
 - [ ] Support plaques étrangères (regex configurable par pays)
+- [ ] Gestion multi-plaques par abonné (actuellement 1 plaque par compte)
+- [ ] Historique des paiements dans l'espace abonné
+- [ ] Emails de confirmation / rappel d'expiration
 
 ## Exigences (Requirements)
 
@@ -189,6 +221,9 @@ systemd/                   # (legacy, remplacé par deploy/etc/systemd/)
 | FR6 | Synchronisation MQTT | ✅ Done |
 | FR7 | OTA (mise à jour distante des boîtiers) | ✅ Done |
 | FR8 | Accès QR code fallback (plaque + nom + TOTP optionnel) | ✅ Done |
+| FR9 | Abonnements parking payant (inscription, paiement Stripe, durée configurable) | ✅ Done |
+| FR10 | Sync auto abonnement → whitelist (activation/expiration/annulation) | ✅ Done |
+| FR11 | Gestion plans tarifaires par le gestionnaire (CRUD, durée, prix) | ✅ Done |
 
 ### Non-fonctionnelles
 | ID | Description | Statut |
@@ -228,4 +263,15 @@ journalctl -u mosquitto -f
 - OTA: packages stockés dans `web/app/static/ota/`, SHA256 calculé à l'upload, vérification côté edge avant installation
 - Accès QR code: page publique `/access/{parking_id}`, rate limité (5 tentatives/5min par IP)
 - TOTP: activable par parking (`require_totp`), secret généré par plaque, compatible Google Authenticator
-- Dépendances web supplémentaires: `pyotp`, `qrcode[pil]`
+- Dépendances web supplémentaires: `pyotp`, `qrcode[pil]`, `stripe` (optionnel, mode dev sans)
+- Abonnements: 3 nouveaux modèles (Subscriber, SubscriptionPlan, Subscription) + enums SubscriptionStatus, PlanDuration
+- Subscriber auth: rôle JWT `subscriber`, routes `/subscribe/register` et `/subscribe/login`
+- Stripe: configurable via env vars `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`
+- Stripe webhook endpoint: `POST /webhook/stripe` (à configurer dans le dashboard Stripe)
+- Mode dev sans Stripe: si `STRIPE_SECRET_KEY` est vide, l'abonnement est activé directement sans paiement
+- Durées d'abonnement supportées: daily, weekly, monthly, quarterly, yearly (calculées en secondes fixes)
+- Tâche async d'expiration: vérifie toutes les 5 min, expire ou renouvelle les abonnements
+- Sync whitelist: un abonnement actif = plaque ajoutée sur tous les devices du parking concerné
+- Annulation: retire la plaque uniquement s'il n'existe pas d'autre abonnement actif sur le même parking
+- Espace abonné public: `/subscribe/parkings`, `/subscribe/parking/{id}`, `/subscribe/account`
+- Dashboard tenant: gestion plans via `/dashboard/parking/{id}/plans`
