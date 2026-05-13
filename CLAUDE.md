@@ -56,7 +56,8 @@ web/                       # Plateforme web SaaS
     config.py              # Settings (env vars, Stripe keys, OTA_STORAGE_DIR, WEB_BASE_URL)
     database.py            # SQLAlchemy + SQLite/PostgreSQL
     templates_env.py       # Jinja2 templates partagé + filtre timestamp_to_date
-    subscription_sync.py   # Sync abonnement → whitelist MQTT + vérification expirations
+    subscription_sync.py   # Sync abonnement → whitelist MQTT + vérification expirations + avertissements
+    email_service.py       # Service email SMTP (confirmation paiement, avertissement expiration, notification gestionnaire)
     routers/
       auth_routes.py       # Login/logout (admin, tenant, subscriber register/login)
       admin.py             # CRUD tenants/users/parkings/devices + OTA upload/push
@@ -166,6 +167,9 @@ systemd/                   # (legacy, remplacé par deploy/etc/systemd/)
 - [x] Annulation d'abonnement avec retrait de la plaque de la whitelist
 - [x] Protection contre double-activation (vérification Stripe session_id unique)
 - [x] Dashboard tenant: page CRUD plans d'abonnement avec compteur abonnés actifs
+- [x] Email confirmation de paiement à l'abonné (récapitulatif complet)
+- [x] Email notification au gestionnaire de parking lors d'un nouvel abonnement
+- [x] Email avertissement 5 jours avant expiration (avec flag anti-doublon)
 
 ### Déploiement
 - [x] install.sh (paquets, user, venv, configs, services, firewall)
@@ -206,7 +210,7 @@ systemd/                   # (legacy, remplacé par deploy/etc/systemd/)
 - [ ] Support plaques étrangères (regex configurable par pays)
 - [ ] Gestion multi-plaques par abonné (actuellement 1 plaque par compte)
 - [ ] Historique des paiements dans l'espace abonné
-- [ ] Emails de confirmation / rappel d'expiration
+- [x] Emails de confirmation / rappel d'expiration / notification gestionnaire
 
 ## Exigences (Requirements)
 
@@ -264,6 +268,11 @@ journalctl -u mosquitto -f
 - Accès QR code: page publique `/access/{parking_id}`, rate limité (5 tentatives/5min par IP)
 - TOTP: activable par parking (`require_totp`), secret généré par plaque, compatible Google Authenticator
 - Dépendances web supplémentaires: `pyotp`, `qrcode[pil]`, `stripe` (optionnel, mode dev sans)
+- SMTP: configurable via env vars `LAPI_SMTP_HOST`, `LAPI_SMTP_PORT`, `LAPI_SMTP_USERNAME`, `LAPI_SMTP_PASSWORD`, `LAPI_SMTP_FROM`, `LAPI_SMTP_USE_TLS`
+- Si SMTP non configuré, les emails sont loggés mais non envoyés (pas de crash)
+- Emails envoyés en arrière-plan (thread) pour ne pas bloquer les requêtes
+- Email d'avertissement envoyé 5 jours avant expiration (flag `expiry_warning_sent` pour éviter les doublons)
+- Email de notification gestionnaire: envoyé au `contact_email` du tenant (ignoré si vide)
 - Abonnements: 3 nouveaux modèles (Subscriber, SubscriptionPlan, Subscription) + enums SubscriptionStatus, PlanDuration
 - Subscriber auth: rôle JWT `subscriber`, routes `/subscribe/register` et `/subscribe/login`
 - Stripe: configurable via env vars `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`

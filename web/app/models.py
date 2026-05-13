@@ -137,6 +137,7 @@ class Subscription(Base):
     end_date = Column(Float, nullable=False)
     stripe_subscription_id = Column(String(255), default="")
     stripe_checkout_session_id = Column(String(255), default="")
+    expiry_warning_sent = Column(Boolean, default=False)
     created_at = Column(Float, default=time.time)
 
     subscriber = relationship("Subscriber", back_populates="subscriptions")

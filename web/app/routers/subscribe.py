@@ -16,6 +16,7 @@ from ..subscription_sync import (
     activate_subscription_plates, deactivate_subscription_plates,
     compute_end_date, DURATION_SECONDS,
 )
+from ..email_service import send_payment_confirmation, send_manager_new_subscription
 from ..templates_env import templates
 
 log = logging.getLogger("lapi.web.subscribe")
@@ -138,6 +139,8 @@ def checkout(request: Request, plan_id: int, auto_renew: bool = Form(False),
     db.commit()
     db.refresh(subscription)
     activate_subscription_plates(db, subscription)
+    send_payment_confirmation(subscriber, subscription)
+    send_manager_new_subscription(plan.parking.tenant, subscriber, subscription)
     return RedirectResponse(url="/subscribe/account", status_code=303)
 
 
@@ -172,6 +175,10 @@ def checkout_success(request: Request, session_id: str = "", db: Session = Depen
                 db.commit()
                 db.refresh(subscription)
                 activate_subscription_plates(db, subscription)
+                subscriber = db.query(Subscriber).filter(Subscriber.id == subscriber_id).first()
+                if subscriber:
+                    send_payment_confirmation(subscriber, subscription)
+                    send_manager_new_subscription(plan.parking.tenant, subscriber, subscription)
 
     return templates.TemplateResponse(request, "subscribe/success.html", {})
 

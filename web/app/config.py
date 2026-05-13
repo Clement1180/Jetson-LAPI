@@ -24,3 +24,10 @@ DEFAULT_ADMIN_PASSWORD = "admin"
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+
+SMTP_HOST = os.getenv("LAPI_SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("LAPI_SMTP_PORT", "587"))
+SMTP_USERNAME = os.getenv("LAPI_SMTP_USERNAME", "")
+SMTP_PASSWORD = os.getenv("LAPI_SMTP_PASSWORD", "")
+SMTP_FROM_EMAIL = os.getenv("LAPI_SMTP_FROM", "noreply@lapi.fr")
+SMTP_USE_TLS = os.getenv("LAPI_SMTP_USE_TLS", "true").lower() in ("true", "1", "yes")

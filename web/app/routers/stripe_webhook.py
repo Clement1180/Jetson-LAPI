@@ -9,6 +9,7 @@ from ..database import get_db
 from ..config import STRIPE_WEBHOOK_SECRET, STRIPE_SECRET_KEY
 from ..models import Subscription, SubscriptionStatus, SubscriptionPlan, Subscriber
 from ..subscription_sync import activate_subscription_plates, deactivate_subscription_plates, compute_end_date
+from ..email_service import send_payment_confirmation, send_manager_new_subscription
 
 log = logging.getLogger("lapi.web.stripe_webhook")
 
@@ -93,4 +94,10 @@ def _handle_checkout_completed(db: Session, session):
     db.commit()
     db.refresh(subscription)
     activate_subscription_plates(db, subscription)
+
+    subscriber = db.query(Subscriber).filter(Subscriber.id == int(subscriber_id)).first()
+    if subscriber:
+        send_payment_confirmation(subscriber, subscription)
+        send_manager_new_subscription(plan.parking.tenant, subscriber, subscription)
+
     log.info(f"Abonnement {subscription.id} cree via webhook Stripe")

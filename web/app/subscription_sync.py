@@ -8,8 +8,11 @@ from .models import (
     Device, WhitelistEntry, PlanDuration,
 )
 from .mqtt_publisher import publish_plate_add, publish_plate_remove
+from .email_service import send_expiry_warning
 
 log = logging.getLogger("lapi.web.subscription_sync")
+
+EXPIRY_WARNING_DAYS = 5
 
 DURATION_SECONDS = {
     PlanDuration.DAILY: 86400,
@@ -102,3 +105,26 @@ def check_expired_subscriptions(db: Session):
 
     db.commit()
     return len(expired)
+
+
+def check_expiry_warnings(db: Session):
+    """Send warning emails for subscriptions expiring within EXPIRY_WARNING_DAYS."""
+    now = time.time()
+    warning_threshold = now + EXPIRY_WARNING_DAYS * 86400
+    soon = db.query(Subscription).filter(
+        Subscription.status == SubscriptionStatus.ACTIVE,
+        Subscription.end_date > now,
+        Subscription.end_date <= warning_threshold,
+        Subscription.expiry_warning_sent == False,
+    ).all()
+
+    for sub in soon:
+        days_remaining = int((sub.end_date - now) / 86400)
+        if days_remaining < 1:
+            days_remaining = 1
+        send_expiry_warning(sub.subscriber, sub, days_remaining)
+        sub.expiry_warning_sent = True
+        log.info(f"Avertissement expiration envoye pour abonnement {sub.id} ({days_remaining}j)")
+
+    db.commit()
+    return len(soon)

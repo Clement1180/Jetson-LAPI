@@ -12,7 +12,7 @@ from .auth import hash_password, get_current_user, NotAuthenticated
 from .models import Admin
 from .config import DEFAULT_ADMIN_USERNAME, DEFAULT_ADMIN_PASSWORD, OTA_STORAGE_DIR
 from .mqtt_publisher import init_mqtt, stop_mqtt
-from .subscription_sync import check_expired_subscriptions
+from .subscription_sync import check_expired_subscriptions, check_expiry_warnings
 from .routers import auth_routes, admin, dashboard, access
 from .routers import subscribe as subscribe_router
 from .routers import stripe_webhook
@@ -30,6 +30,9 @@ async def _subscription_expiry_loop():
             count = check_expired_subscriptions(db)
             if count:
                 log.info(f"{count} abonnement(s) traite(s)")
+            warnings = check_expiry_warnings(db)
+            if warnings:
+                log.info(f"{warnings} avertissement(s) d'expiration envoye(s)")
             db.close()
         except Exception as e:
             log.error(f"Erreur verification abonnements: {e}")
