@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Admin - Mises a jour OTA{% endblock %}
+
+{% block nav %}
+<nav>
+  <a href="/admin" class="brand">LAPI ADMIN</a>
+  <div class="nav-right">
+    <a href="/admin/ota">Mises a jour OTA</a>
+    <span>{{ user.username }}</span>
+    <a href="/logout">Deconnexion</a>
+  </div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="/admin">Clients</a> / Mises a jour OTA
+</div>
+
+<div class="page-header">
+  <h1>Mises a jour OTA</h1>
+</div>
+
+<div class="card">
+  <h2>Telecharger un package</h2>
+  <form method="post" action="/admin/ota/upload" enctype="multipart/form-data">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="version">Version</label>
+        <input type="text" id="version" name="version" required placeholder="v1.2.0">
+      </div>
+      <div class="form-group">
+        <label for="package">Package (.tar.gz)</label>
+        <input type="file" id="package" name="package" accept=".tar.gz,.tgz" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Telecharger</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Packages disponibles</h2>
+  <table>
+    <thead>
+      <tr><th>Fichier</th><th>Taille</th></tr>
+    </thead>
+    <tbody>
+      {% for pkg in packages %}
+      <tr>
+        <td><code>{{ pkg.filename }}</code></td>
+        <td>{{ pkg.size_mb }} Mo</td>
+      </tr>
+      {% else %}
+      <tr class="empty-row"><td colspan="2">Aucun package disponible</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Comment deployer</h2>
+  <p style="color:var(--gray-400);font-size:0.9rem;">
+    1. Telechargez un package ci-dessus.<br>
+    2. Allez sur la page d'un client, puis cliquez "Deployer" sur le dispositif cible en indiquant la version.<br>
+    3. Le boitier recevra la commande via MQTT, telechargera le package, verifiera le hash SHA256, et s'installera automatiquement.
+  </p>
+</div>
+{% endblock %}

@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}{{ device.name }} - Whitelist{% endblock %}
+
+{% block nav %}
+<nav>
+  <a href="/dashboard" class="brand">LAPI</a>
+  <div class="nav-right">
+    <span>{{ user.username }}</span>
+    <a href="/logout">Deconnexion</a>
+  </div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="/dashboard">Parkings</a> /
+  <a href="/dashboard/parking/{{ device.parking.id }}">{{ device.parking.name }}</a> /
+  {{ device.name }}
+</div>
+
+<div class="page-header">
+  <h1>{{ device.name }}</h1>
+  <form method="post" action="/dashboard/device/{{ device.id }}/whitelist/sync">
+    <button type="submit" class="btn btn-success btn-sm" title="Envoyer toute la whitelist au boitier">Synchroniser le boitier</button>
+  </form>
+</div>
+
+<p style="color:var(--gray-600);font-size:0.85rem;margin-bottom:1.5rem;">
+  N/S : <code>{{ device.serial_number }}</code> &mdash;
+  MQTT : <code>{{ device.mqtt_client_id }}</code>
+</p>
+
+<div class="card">
+  <h2>Ajouter une plaque</h2>
+  <form method="post" action="/dashboard/device/{{ device.id }}/whitelist/add">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="plate">Plaque d'immatriculation</label>
+        <input type="text" id="plate" name="plate" required
+               class="plate-input" placeholder="AA-123-BB"
+               pattern="[A-Za-z0-9\- ]+" maxlength="15">
+      </div>
+      <div class="form-group">
+        <label for="owner_name">Nom et prenom</label>
+        <input type="text" id="owner_name" name="owner_name" placeholder="Jean Dupont">
+      </div>
+      <div class="form-group">
+        <label for="label">Libelle (optionnel)</label>
+        <input type="text" id="label" name="label" placeholder="Place 42">
+      </div>
+      <button type="submit" class="btn btn-primary">Ajouter</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Whitelist ({{ entries|length }} plaque{{ 's' if entries|length != 1 }})</h2>
+  <table>
+    <thead>
+      <tr><th>Plaque</th><th>Proprietaire</th><th>Libelle</th>{% if device.parking.require_totp %}<th>TOTP</th>{% endif %}<th></th></tr>
+    </thead>
+    <tbody>
+      {% for entry in entries %}
+      <tr>
+        <td><code class="plate-input" style="font-size:0.95rem;">{{ entry.plate }}</code></td>
+        <td>{{ entry.owner_name or '-' }}</td>
+        <td>{{ entry.label or '-' }}</td>
+        {% if device.parking.require_totp %}
+        <td>
+          {% if totp_qrs.get(entry.id) %}
+          <details>
+            <summary class="btn btn-outline btn-sm">QR Code</summary>
+            <div style="padding:0.5rem;text-align:center;">
+              <img src="data:image/png;base64,{{ totp_qrs[entry.id] }}" alt="TOTP QR" style="width:160px;">
+              <p style="font-size:0.75rem;color:var(--gray-400);margin-top:0.25rem;">Scanner avec Google Authenticator</p>
+            </div>
+          </details>
+          {% else %}
+          <span style="color:var(--gray-400);font-size:0.8rem;">Non configure</span>
+          {% endif %}
+        </td>
+        {% endif %}
+        <td>
+          <form method="post" action="/dashboard/device/{{ device.id }}/whitelist/{{ entry.id }}/delete"
+                class="confirm-delete"
+                onsubmit="return confirm('Retirer {{ entry.plate }} de la whitelist ?')">
+            <button type="submit" class="btn btn-danger btn-sm">Retirer</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr class="empty-row"><td colspan="{{ 5 if device.parking.require_totp else 4 }}">Whitelist vide &mdash; aucune plaque autorisee</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

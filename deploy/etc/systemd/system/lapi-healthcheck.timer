@@ -1,0 +1,10 @@
+[Unit]
+Description=LAPI Health Check Timer (toutes les 60s)
+
+[Timer]
+OnBootSec=120
+OnUnitActiveSec=60
+AccuracySec=5
+
+[Install]
+WantedBy=timers.target

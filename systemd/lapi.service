@@ -1,0 +1,40 @@
+[Unit]
+Description=LAPI - Lecture Automatique de Plaques d'Immatriculation
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lapi
+Group=lapi
+
+ExecStart=/opt/lapi/venv/bin/python /opt/lapi/python/service.py /etc/lapi/config.yaml
+WorkingDirectory=/opt/lapi/python
+
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+# Limites mémoire (kill si dépassement)
+MemoryMax=768M
+MemoryHigh=512M
+
+# Watchdog systemd natif (complémentaire au watchdog applicatif)
+WatchdogSec=60
+
+# Sécurité: pas de ports entrants (NFR6)
+ProtectSystem=strict
+ProtectHome=true
+NoNewPrivileges=true
+ReadWritePaths=/var/lib/lapi /var/log/lapi
+
+# GPU et GPIO access
+SupplementaryGroups=video gpio i2c
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=lapi
+
+[Install]
+WantedBy=multi-user.target

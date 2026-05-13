@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}{{ tenant.name }} - Parkings{% endblock %}
+
+{% block nav %}
+<nav>
+  <a href="/dashboard" class="brand">LAPI</a>
+  <div class="nav-right">
+    <span>{{ tenant.name }}</span>
+    <span>|</span>
+    <span>{{ user.username }}</span>
+    <a href="/logout">Deconnexion</a>
+  </div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Mes parkings</h1>
+</div>
+
+<div class="stats">
+  <div class="stat-card">
+    <div class="stat-value">{{ parkings|length }}</div>
+    <div class="stat-label">Parkings</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{% set ns = namespace(n=0) %}{% for p in parkings %}{% set ns.n = ns.n + p.devices|length %}{% endfor %}{{ ns.n }}</div>
+    <div class="stat-label">Dispositifs</div>
+  </div>
+</div>
+
+{% for parking in parkings %}
+<div class="card">
+  <h2>{{ parking.name }}</h2>
+  {% if parking.address %}
+    <p style="color:var(--gray-600);font-size:0.9rem;margin-bottom:1rem;">{{ parking.address }}</p>
+  {% endif %}
+
+  {% if parking.devices %}
+  <table>
+    <thead>
+      <tr><th>Dispositif</th><th>N/S</th><th>Plaques</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for device in parking.devices %}
+      <tr>
+        <td>{{ device.name }}</td>
+        <td><code>{{ device.serial_number }}</code></td>
+        <td><span class="badge badge-info">{{ device.whitelist|length }}</span></td>
+        <td><a href="/dashboard/device/{{ device.id }}" class="btn btn-primary btn-sm">Whitelist</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:var(--gray-400);text-align:center;padding:1rem;">Aucun dispositif installe</p>
+  {% endif %}
+</div>
+{% else %}
+<div class="card">
+  <p style="color:var(--gray-400);text-align:center;padding:2rem;">Aucun parking associe. Contactez votre administrateur.</p>
+</div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}Admin - {{ tenant.name }}{% endblock %}
+
+{% block nav %}
+<nav>
+  <a href="/admin" class="brand">LAPI ADMIN</a>
+  <div class="nav-right">
+    <a href="/admin/ota">Mises a jour OTA</a>
+    <span>{{ user.username }}</span>
+    <a href="/logout">Deconnexion</a>
+  </div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="/admin">Clients</a> / {{ tenant.name }}
+</div>
+
+<div class="page-header">
+  <h1>{{ tenant.name }}</h1>
+  <div style="display:flex;gap:0.5rem;">
+    <form method="post" action="/admin/tenants/{{ tenant.id }}/toggle">
+      <button type="submit" class="btn btn-outline btn-sm">
+        {% if tenant.is_active %}Desactiver{% else %}Activer{% endif %}
+      </button>
+    </form>
+    <form method="post" action="/admin/tenants/{{ tenant.id }}/delete"
+          onsubmit="return confirm('Supprimer ce client et toutes ses donnees ?')">
+      <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
+    </form>
+  </div>
+</div>
+
+<!-- UTILISATEURS -->
+<div class="card">
+  <h2>Utilisateurs</h2>
+  <form method="post" action="/admin/tenants/{{ tenant.id }}/users/create" style="margin-bottom:1rem;">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="username">Identifiant</label>
+        <input type="text" id="username" name="username" required placeholder="jean.dupont">
+      </div>
+      <div class="form-group">
+        <label for="password">Mot de passe</label>
+        <input type="password" id="password" name="password" required placeholder="********">
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm">Ajouter</button>
+    </div>
+  </form>
+  <table>
+    <thead>
+      <tr><th>Identifiant</th><th>Statut</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for u in tenant.users %}
+      <tr>
+        <td>{{ u.username }}</td>
+        <td>
+          {% if u.is_active %}
+            <span class="badge badge-success">Actif</span>
+          {% else %}
+            <span class="badge badge-danger">Inactif</span>
+          {% endif %}
+        </td>
+        <td>
+          <form method="post" action="/admin/tenants/{{ tenant.id }}/users/{{ u.id }}/delete" class="confirm-delete"
+                onsubmit="return confirm('Supprimer cet utilisateur ?')">
+            <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr class="empty-row"><td colspan="3">Aucun utilisateur</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- PARKINGS -->
+<div class="card">
+  <h2>Parkings</h2>
+  <form method="post" action="/admin/tenants/{{ tenant.id }}/parkings/create" style="margin-bottom:1rem;">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="park_name">Nom</label>
+        <input type="text" id="park_name" name="name" required placeholder="Parking Centre-Ville">
+      </div>
+      <div class="form-group">
+        <label for="address">Adresse</label>
+        <input type="text" id="address" name="address" placeholder="12 rue de la Paix, Paris">
+      </div>
+      <div class="form-group" style="display:flex;align-items:flex-end;">
+        <label style="display:flex;align-items:center;gap:0.4rem;white-space:nowrap;">
+          <input type="checkbox" name="require_totp" value="1"> TOTP requis
+        </label>
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm">Ajouter</button>
+    </div>
+  </form>
+
+  {% for parking in tenant.parkings %}
+  <div style="border:1px solid var(--gray-200);border-radius:var(--radius);padding:1rem;margin-bottom:1rem;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
+      <div>
+        <strong>{{ parking.name }}</strong>
+        {% if parking.address %}
+          <span style="color:var(--gray-400);font-size:0.85rem;margin-left:0.5rem;">{{ parking.address }}</span>
+        {% endif %}
+        <span class="badge badge-info" style="margin-left:0.5rem;">{{ parking.devices|length }} dispositif(s)</span>
+        {% if parking.require_totp %}
+          <span class="badge badge-warning" style="margin-left:0.25rem;">TOTP actif</span>
+        {% endif %}
+        <a href="/access/{{ parking.id }}" target="_blank" style="margin-left:0.5rem;font-size:0.8rem;">Lien QR acces</a>
+      </div>
+      <form method="post" action="/admin/tenants/{{ tenant.id }}/parkings/{{ parking.id }}/delete"
+            onsubmit="return confirm('Supprimer ce parking et ses dispositifs ?')">
+        <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
+      </form>
+    </div>
+
+    <!-- Devices du parking -->
+    {% if device_error_parking == parking.id %}
+    <div style="background:var(--danger-bg, #fef2f2);color:var(--danger, #dc2626);padding:0.5rem 1rem;border-radius:var(--radius);margin-bottom:0.5rem;font-size:0.85rem;">
+      {{ device_error_msg }}
+    </div>
+    {% endif %}
+    <form method="post" action="/admin/parkings/{{ parking.id }}/devices/create" style="margin-bottom:0.5rem;">
+      <div class="form-row">
+        <div class="form-group">
+          <label>N/S dispositif</label>
+          <input type="text" name="serial_number" required placeholder="LAPI-{{ '%03d' % (parking.devices|length + 1) }}">
+        </div>
+        <div class="form-group">
+          <label>Nom</label>
+          <input type="text" name="name" placeholder="Entree principale">
+        </div>
+        <div class="form-group">
+          <label>MQTT Client ID</label>
+          <input type="text" name="mqtt_client_id" required placeholder="lapi-{{ parking.name|lower|replace(' ', '-') }}-{{ '%03d' % (parking.devices|length + 1) }}">
+        </div>
+        <button type="submit" class="btn btn-outline btn-sm">+ Dispositif</button>
+      </div>
+    </form>
+
+    {% if parking.devices %}
+    <table>
+      <thead>
+        <tr><th>Nom</th><th>N/S</th><th>MQTT ID</th><th>Plaques</th><th>OTA</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for device in parking.devices %}
+        <tr>
+          <td>{{ device.name }}</td>
+          <td><code>{{ device.serial_number }}</code></td>
+          <td><code>{{ device.mqtt_client_id }}</code></td>
+          <td>{{ device.whitelist|length }}</td>
+          <td>
+            <form method="post" action="/admin/devices/{{ device.id }}/ota/push" style="display:flex;gap:0.25rem;align-items:center;"
+                  onsubmit="return confirm('Envoyer la mise a jour a {{ device.name }} ?')">
+              <input type="text" name="version" required placeholder="v1.0.0" style="width:80px;padding:0.2rem 0.4rem;font-size:0.8rem;">
+              <button type="submit" class="btn btn-outline btn-sm">Deployer</button>
+            </form>
+          </td>
+          <td>
+            <form method="post" action="/admin/devices/{{ device.id }}/delete" class="confirm-delete"
+                  onsubmit="return confirm('Supprimer ce dispositif ?')">
+              <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+  {% else %}
+  <p style="color:var(--gray-400);text-align:center;padding:1rem;">Aucun parking</p>
+  {% endfor %}
+</div>
+{% endblock %}

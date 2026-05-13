@@ -239,4 +239,9 @@ exemples/inputs/*
 exemples/outputs/*
 models/*
 
+# LAPI
+*.db
+*.db-journal
+*.db-wal
+
 # End of https://www.toptal.com/developers/gitignore/api/python,c++,visualstudiocode,cuda

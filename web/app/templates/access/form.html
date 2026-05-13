@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LAPI - Acces parking</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .access-wrapper { display:flex; justify-content:center; align-items:center; min-height:100vh; padding:1rem; }
+    .access-card { background:var(--white,#fff); border-radius:var(--radius,8px); padding:2rem; max-width:420px; width:100%; box-shadow:0 2px 12px rgba(0,0,0,0.08); }
+    .access-card h1 { text-align:center; margin-bottom:0.25rem; font-size:1.5rem; }
+    .access-card .subtitle { text-align:center; color:var(--gray-400,#888); margin-bottom:1.5rem; }
+    .alert-error { background:#fef2f2; color:#dc2626; padding:0.75rem 1rem; border-radius:var(--radius,8px); margin-bottom:1rem; font-size:0.9rem; }
+    .alert-success { background:#f0fdf4; color:#16a34a; padding:0.75rem 1rem; border-radius:var(--radius,8px); margin-bottom:1rem; font-size:0.9rem; text-align:center; }
+    .alert-success strong { font-size:1.1rem; }
+  </style>
+</head>
+<body>
+  <div class="access-wrapper">
+    <div class="access-card">
+      <h1>LAPI</h1>
+
+      {% if not parking %}
+      <p style="text-align:center;color:var(--gray-400);">Parking introuvable.</p>
+
+      {% elif success %}
+      <div class="alert-success">
+        <strong>Acces autorise</strong><br>
+        La barriere va s'ouvrir.
+      </div>
+      <p class="subtitle">{{ parking.name }}</p>
+
+      {% else %}
+      <p class="subtitle">{{ parking.name }}{% if parking.address %} — {{ parking.address }}{% endif %}</p>
+
+      {% if error %}
+      <div class="alert-error">{{ error }}</div>
+      {% endif %}
+
+      <form method="post">
+        <div class="form-group">
+          <label for="plate">Plaque d'immatriculation</label>
+          <input type="text" id="plate" name="plate" required placeholder="AA-123-BB"
+                 pattern="[A-Za-z0-9\- ]+" maxlength="15" style="text-transform:uppercase;">
+        </div>
+        <div class="form-group">
+          <label for="owner_name">Nom et prenom</label>
+          <input type="text" id="owner_name" name="owner_name" required placeholder="Jean Dupont">
+        </div>
+
+        {% if parking.require_totp %}
+        <div class="form-group">
+          <label for="totp_code">Code de verification (application)</label>
+          <input type="text" id="totp_code" name="totp_code" required
+                 placeholder="123456" pattern="[0-9]{6}" maxlength="6"
+                 inputmode="numeric" autocomplete="one-time-code">
+        </div>
+        {% endif %}
+
+        <button type="submit" class="btn btn-primary" style="width:100%;margin-top:0.5rem;">Demander l'acces</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

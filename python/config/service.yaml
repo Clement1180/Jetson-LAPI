@@ -1,0 +1,47 @@
+models:
+  yolo_car: "../models/yolov8s.onnx"
+  yolo_plate: "../models/yolov8s-pose.onnx"
+  ocr_model: "../models/ocr_model.onnx"
+  ocr_dict: "../models/en_dict.txt"
+
+camera:
+  source: "csi"           # csi | v4l2 | usb | <chemin fichier>
+  width: 1920
+  height: 1080
+  fps: 30
+  device: "/dev/video0"
+  sensor_id: 0
+
+gpio:
+  pin: 18
+  pulse_ms: 500
+  cooldown_ms: 3000
+
+database:
+  path: "/var/lib/lapi/whitelist.db"
+
+mqtt:
+  enabled: true
+  broker: "mqtt.example.com"
+  port: 8883
+  client_id: "lapi-edge-001"
+  username: ""
+  password: ""
+  use_tls: true
+  ca_certs: "/etc/lapi/certs/ca.crt"
+  client_cert: "/etc/lapi/certs/client.crt"
+  client_key: "/etc/lapi/certs/client.key"
+
+validation:
+  min_votes: 3
+  min_ratio: 0.6
+
+watchdog:
+  memory_limit_mb: 512
+  heartbeat_timeout_s: 30
+  check_interval_s: 5
+
+ota:
+  enabled: true
+  install_dir: "/opt/lapi"
+  ota_dir: "/var/lib/lapi/ota"

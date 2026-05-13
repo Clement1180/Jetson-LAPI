@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ parking.name }}{% endblock %}
+
+{% block nav %}
+<nav>
+  <a href="/dashboard" class="brand">LAPI</a>
+  <div class="nav-right">
+    <span>{{ user.username }}</span>
+    <a href="/logout">Deconnexion</a>
+  </div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="/dashboard">Parkings</a> / {{ parking.name }}
+</div>
+
+<div class="page-header">
+  <h1>{{ parking.name }}</h1>
+</div>
+
+{% if parking.address %}
+  <p style="color:var(--gray-600);margin-bottom:1.5rem;">{{ parking.address }}</p>
+{% endif %}
+
+<div class="card">
+  <h2>Dispositifs</h2>
+  {% if parking.devices %}
+  <table>
+    <thead>
+      <tr><th>Nom</th><th>N/S</th><th>Plaques</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for device in parking.devices %}
+      <tr>
+        <td>{{ device.name }}</td>
+        <td><code>{{ device.serial_number }}</code></td>
+        <td><span class="badge badge-info">{{ device.whitelist|length }}</span></td>
+        <td><a href="/dashboard/device/{{ device.id }}" class="btn btn-primary btn-sm">Gerer whitelist</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:var(--gray-400);text-align:center;padding:2rem;">Aucun dispositif installe sur ce parking.</p>
+  {% endif %}
+</div>
+{% endblock %}

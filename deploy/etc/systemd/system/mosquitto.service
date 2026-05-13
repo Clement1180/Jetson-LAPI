@@ -1,0 +1,33 @@
+[Unit]
+Description=Mosquitto MQTT Broker (LAPI local)
+After=network.target
+Before=lapi.service
+
+[Service]
+Type=simple
+User=mosquitto
+Group=mosquitto
+
+ExecStartPre=/usr/sbin/mosquitto -t -c /etc/mosquitto/mosquitto.conf
+ExecStart=/usr/sbin/mosquitto -c /etc/mosquitto/mosquitto.conf
+ExecReload=/bin/kill -HUP $MAINPID
+
+Restart=always
+RestartSec=3
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+# Pas besoin de beaucoup de memoire
+MemoryMax=64M
+
+ProtectSystem=strict
+ProtectHome=true
+NoNewPrivileges=true
+ReadWritePaths=/var/lib/mosquitto /var/log/mosquitto
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mosquitto-lapi
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,53 @@
+[Unit]
+Description=LAPI - Lecture Automatique de Plaques d'Immatriculation
+After=network.target mosquitto.service
+Wants=mosquitto.service
+Requires=lapi-healthcheck.timer
+
+[Service]
+Type=simple
+User=lapi
+Group=lapi
+
+ExecStartPre=/opt/lapi/venv/bin/python -c "import sys; sys.exit(0)"
+ExecStart=/opt/lapi/venv/bin/python /opt/lapi/python/service.py /etc/lapi/config.yaml
+WorkingDirectory=/opt/lapi/python
+
+Restart=always
+RestartSec=3
+StartLimitIntervalSec=300
+StartLimitBurst=20
+
+# Limites memoire hard (OOM kill si depassement)
+MemoryMax=768M
+MemoryHigh=512M
+
+# Watchdog systemd natif : si le service ne ping pas, systemd le tue
+WatchdogSec=60
+NotifyAccess=main
+
+# Securite renforcee
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+ReadWritePaths=/var/lib/lapi /var/log/lapi /opt/lapi/python
+
+# Acces GPU, GPIO, camera
+SupplementaryGroups=video gpio i2c
+DeviceAllow=/dev/video0 rw
+DeviceAllow=/dev/nvhost-ctrl rw
+DeviceAllow=/dev/nvhost-ctrl-gpu rw
+DeviceAllow=/dev/nvmap rw
+DeviceAllow=/dev/gpiochip0 rw
+
+# Environnement
+Environment=PYTHONUNBUFFERED=1
+Environment=LD_LIBRARY_PATH=/usr/local/cuda/lib64
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=lapi
+
+[Install]
+WantedBy=multi-user.target

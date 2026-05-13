@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Admin - Clients{% endblock %}
+
+{% block nav %}
+<nav>
+  <a href="/admin" class="brand">LAPI ADMIN</a>
+  <div class="nav-right">
+    <a href="/admin/ota">Mises a jour OTA</a>
+    <span>{{ user.username }}</span>
+    <a href="/logout">Deconnexion</a>
+  </div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Clients</h1>
+</div>
+
+<div class="stats">
+  <div class="stat-card">
+    <div class="stat-value">{{ tenants|length }}</div>
+    <div class="stat-label">Clients</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ tenants|selectattr('is_active')|list|length }}</div>
+    <div class="stat-label">Actifs</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Ajouter un client</h2>
+  <form method="post" action="/admin/tenants/create">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="name">Nom</label>
+        <input type="text" id="name" name="name" required placeholder="Societe Parking SA">
+      </div>
+      <div class="form-group">
+        <label for="contact_email">Email contact</label>
+        <input type="email" id="contact_email" name="contact_email" placeholder="contact@example.com">
+      </div>
+      <button type="submit" class="btn btn-primary">Ajouter</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Liste des clients</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Nom</th>
+        <th>Email</th>
+        <th>Utilisateurs</th>
+        <th>Parkings</th>
+        <th>Statut</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for tenant in tenants %}
+      <tr>
+        <td><a href="/admin/tenants/{{ tenant.id }}">{{ tenant.name }}</a></td>
+        <td>{{ tenant.contact_email or '-' }}</td>
+        <td>{{ tenant.users|length }}</td>
+        <td>{{ tenant.parkings|length }}</td>
+        <td>
+          {% if tenant.is_active %}
+            <span class="badge badge-success">Actif</span>
+          {% else %}
+            <span class="badge badge-danger">Inactif</span>
+          {% endif %}
+        </td>
+        <td>
+          <a href="/admin/tenants/{{ tenant.id }}" class="btn btn-outline btn-sm">Gerer</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr class="empty-row"><td colspan="6">Aucun client enregistre</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

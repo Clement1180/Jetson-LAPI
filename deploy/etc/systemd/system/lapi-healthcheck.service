@@ -1,0 +1,7 @@
+[Unit]
+Description=LAPI Health Check
+After=lapi.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/lapi/scripts/healthcheck.sh
