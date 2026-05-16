@@ -1,18 +1,20 @@
 import pyotp
 from fastapi import APIRouter, Request, Depends, Form
 from fastapi.responses import RedirectResponse, HTMLResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..auth import require_tenant
-from ..models import Tenant, Parking, Device, WhitelistEntry, SubscriptionPlan, Subscription, PlanDuration, SubscriptionStatus
+from ..models import (
+    Tenant, Parking, Device, WhitelistEntry, SubscriptionPlan, Subscription,
+    PlanDuration, SubscriptionStatus, AccessLog, Alert, AccessResult,
+)
 from ..mqtt_publisher import publish_plate_add, publish_plate_remove, publish_whitelist_sync
 from ..security import sanitize_string, validate_plate
+from ..templates_env import templates
 from .access import generate_totp_qr
 
 router = APIRouter(prefix="/dashboard")
-templates = Jinja2Templates(directory="app/templates")
 
 
 @router.get("", response_class=HTMLResponse)
@@ -245,3 +247,65 @@ def delete_plan(request: Request, parking_id: int, plan_id: int,
             db.delete(plan)
             db.commit()
     return RedirectResponse(url=f"/dashboard/parking/{parking_id}/plans", status_code=303)
+
+
+@router.get("/parking/{parking_id}/logs", response_class=HTMLResponse)
+def parking_access_logs(request: Request, parking_id: int, db: Session = Depends(get_db)):
+    user = require_tenant(request)
+    parking = db.query(Parking).filter(
+        Parking.id == parking_id,
+        Parking.tenant_id == user["tenant_id"],
+    ).first()
+    if not parking:
+        return RedirectResponse(url="/dashboard", status_code=303)
+
+    device_ids = [d.id for d in parking.devices]
+    logs = []
+    if device_ids:
+        logs = db.query(AccessLog).filter(
+            AccessLog.device_id.in_(device_ids),
+        ).order_by(AccessLog.created_at.desc()).limit(200).all()
+
+    devices_map = {d.id: d for d in parking.devices}
+    return templates.TemplateResponse(request, "dashboard/access_logs.html", {
+        "user": user, "parking": parking, "logs": logs, "devices_map": devices_map,
+    })
+
+
+@router.get("/parking/{parking_id}/alerts", response_class=HTMLResponse)
+def parking_alerts(request: Request, parking_id: int, db: Session = Depends(get_db)):
+    user = require_tenant(request)
+    parking = db.query(Parking).filter(
+        Parking.id == parking_id,
+        Parking.tenant_id == user["tenant_id"],
+    ).first()
+    if not parking:
+        return RedirectResponse(url="/dashboard", status_code=303)
+
+    alerts = db.query(Alert).filter(
+        Alert.parking_id == parking_id,
+    ).order_by(Alert.created_at.desc()).limit(100).all()
+
+    devices_map = {d.id: d for d in parking.devices}
+    return templates.TemplateResponse(request, "dashboard/alerts.html", {
+        "user": user, "parking": parking, "alerts": alerts, "devices_map": devices_map,
+        "csrf_token": request.cookies.get("csrf_token", ""),
+    })
+
+
+@router.post("/parking/{parking_id}/alerts/mark-read")
+def mark_alerts_read(request: Request, parking_id: int, db: Session = Depends(get_db)):
+    user = require_tenant(request)
+    parking = db.query(Parking).filter(
+        Parking.id == parking_id,
+        Parking.tenant_id == user["tenant_id"],
+    ).first()
+    if not parking:
+        return RedirectResponse(url="/dashboard", status_code=303)
+
+    db.query(Alert).filter(
+        Alert.parking_id == parking_id,
+        Alert.is_read == False,
+    ).update({"is_read": True})
+    db.commit()
+    return RedirectResponse(url=f"/dashboard/parking/{parking_id}/alerts", status_code=303)

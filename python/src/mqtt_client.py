@@ -15,6 +15,7 @@ TOPIC_WHITELIST_REMOVE = "lapi/whitelist/remove"
 TOPIC_OTA_UPDATE = "lapi/ota/update"
 TOPIC_ACCESS_OPEN = "lapi/access/open"
 TOPIC_STATUS = "lapi/status"
+TOPIC_ACCESS_LOG = "lapi/access/log"
 
 
 class MQTTSync:
@@ -66,6 +67,16 @@ class MQTTSync:
         if self._connected:
             payload = json.dumps(status)
             self._client.publish(TOPIC_STATUS, payload, qos=1)
+
+    def publish_access_log(self, plate: str, granted: bool, confidence: float = 0.0):
+        if self._connected:
+            payload = json.dumps({
+                "plate": plate,
+                "result": "granted" if granted else "denied",
+                "confidence": confidence,
+                "timestamp": time.time(),
+            })
+            self._client.publish(TOPIC_ACCESS_LOG, payload, qos=1)
 
     @property
     def connected(self) -> bool:

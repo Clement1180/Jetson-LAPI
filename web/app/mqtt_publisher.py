@@ -1,6 +1,7 @@
 import json
 import logging
 import ssl
+import time
 from typing import List, Tuple, Optional
 
 import paho.mqtt.client as mqtt
@@ -14,10 +15,12 @@ log = logging.getLogger("lapi.web.mqtt")
 
 _client: Optional[mqtt.Client] = None
 _connected = False
+_db_session_factory = None
 
 
-def init_mqtt():
-    global _client, _connected
+def init_mqtt(session_factory=None):
+    global _client, _connected, _db_session_factory
+    _db_session_factory = session_factory
 
     _v2 = hasattr(mqtt, "CallbackAPIVersion")
 
@@ -49,6 +52,8 @@ def init_mqtt():
         _connected = rc == 0
         if rc == 0:
             log.info("MQTT publisher connecte")
+            client.subscribe("lapi/+/access/log", qos=1)
+            client.subscribe("lapi/+/status", qos=1)
         else:
             log.error(f"MQTT connexion echouee: rc={rc}")
 
@@ -60,6 +65,7 @@ def init_mqtt():
 
     _client.on_connect = on_connect
     _client.on_disconnect = on_disconnect
+    _client.on_message = _on_message
     _client.reconnect_delay_set(min_delay=1, max_delay=30)
 
     try:
@@ -67,6 +73,115 @@ def init_mqtt():
         _client.loop_start()
     except Exception as e:
         log.warning(f"MQTT non disponible: {e}")
+
+
+def _on_message(client, userdata, msg):
+    try:
+        topic_parts = msg.topic.split("/")
+        if len(topic_parts) < 3:
+            return
+        device_mqtt_id = topic_parts[1]
+        action = "/".join(topic_parts[2:])
+        payload = json.loads(msg.payload.decode())
+
+        if action == "access/log":
+            _handle_access_log(device_mqtt_id, payload)
+        elif action == "status":
+            _handle_device_status(device_mqtt_id, payload)
+    except Exception as e:
+        log.error(f"Erreur traitement message MQTT {msg.topic}: {e}")
+
+
+def _handle_access_log(device_mqtt_id: str, payload: dict):
+    if not _db_session_factory:
+        return
+    from .models import Device, AccessLog, AccessResult, Alert, AlertType, AlertSeverity
+    db = _db_session_factory()
+    try:
+        device = db.query(Device).filter(Device.mqtt_client_id == device_mqtt_id).first()
+        if not device:
+            log.warning(f"Device MQTT inconnu: {device_mqtt_id}")
+            return
+
+        plate = payload.get("plate", "")
+        result_str = payload.get("result", "denied")
+        confidence = payload.get("confidence", 0.0)
+
+        result = AccessResult.GRANTED if result_str == "granted" else AccessResult.DENIED
+
+        access_log = AccessLog(
+            device_id=device.id,
+            plate=plate,
+            result=result,
+            confidence=confidence,
+            created_at=payload.get("timestamp", time.time()),
+        )
+        db.add(access_log)
+
+        if result == AccessResult.DENIED and plate:
+            alert = Alert(
+                parking_id=device.parking_id,
+                device_id=device.id,
+                alert_type=AlertType.ACCESS_DENIED,
+                severity=AlertSeverity.WARNING,
+                message=f"Acces refuse: plaque {plate} non autorisee",
+                plate=plate,
+                created_at=time.time(),
+            )
+            db.add(alert)
+            _notify_alert_async(device, alert)
+
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        log.error(f"Erreur enregistrement access log: {e}")
+    finally:
+        db.close()
+
+
+def _handle_device_status(device_mqtt_id: str, payload: dict):
+    if not _db_session_factory:
+        return
+    from .models import Device, Alert, AlertType, AlertSeverity
+    db = _db_session_factory()
+    try:
+        device = db.query(Device).filter(Device.mqtt_client_id == device_mqtt_id).first()
+        if not device:
+            return
+
+        was_online = device.is_online
+        device.is_online = True
+        device.last_seen = time.time()
+
+        if not was_online:
+            alert = Alert(
+                parking_id=device.parking_id,
+                device_id=device.id,
+                alert_type=AlertType.DEVICE_ONLINE,
+                severity=AlertSeverity.INFO,
+                message=f"Dispositif {device.name or device.serial_number} de retour en ligne",
+                created_at=time.time(),
+            )
+            db.add(alert)
+
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        log.error(f"Erreur mise a jour statut device: {e}")
+    finally:
+        db.close()
+
+
+def _notify_alert_async(device, alert):
+    """Trigger alert email in background."""
+    import threading
+    def _send():
+        try:
+            from .email_service import send_alert_notification
+            send_alert_notification(device, alert)
+        except Exception as e:
+            log.error(f"Erreur envoi alerte email: {e}")
+    threading.Thread(target=_send, daemon=True).start()
 
 
 def stop_mqtt():

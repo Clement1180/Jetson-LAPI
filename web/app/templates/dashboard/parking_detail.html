@@ -18,7 +18,11 @@
 
 <div class="page-header">
   <h1>{{ parking.name }}</h1>
-  <a href="/dashboard/parking/{{ parking.id }}/plans" class="btn btn-primary">Gerer les abonnements</a>
+  <div>
+    <a href="/dashboard/parking/{{ parking.id }}/logs" class="btn btn-secondary">Historique acces</a>
+    <a href="/dashboard/parking/{{ parking.id }}/alerts" class="btn btn-secondary">Alertes</a>
+    <a href="/dashboard/parking/{{ parking.id }}/plans" class="btn btn-primary">Gerer les abonnements</a>
+  </div>
 </div>
 
 {% if parking.address %}

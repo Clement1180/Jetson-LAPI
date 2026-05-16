@@ -12,6 +12,30 @@ class SubscriptionStatus(str, enum.Enum):
     PAST_DUE = "past_due"
 
 
+class AccessResult(str, enum.Enum):
+    GRANTED = "granted"
+    DENIED = "denied"
+
+
+class AlertType(str, enum.Enum):
+    ACCESS_DENIED = "access_denied"
+    DEVICE_OFFLINE = "device_offline"
+    DEVICE_ONLINE = "device_online"
+
+
+class AlertSeverity(str, enum.Enum):
+    INFO = "info"
+    WARNING = "warning"
+    CRITICAL = "critical"
+
+
+class PaymentStatus(str, enum.Enum):
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    REFUNDED = "refunded"
+    PARTIAL_REFUND = "partial_refund"
+
+
 class PlanDuration(str, enum.Enum):
     DAILY = "daily"
     WEEKLY = "weekly"
@@ -63,6 +87,7 @@ class Parking(Base):
     tenant = relationship("Tenant", back_populates="parkings")
     devices = relationship("Device", back_populates="parking", cascade="all, delete-orphan")
     plans = relationship("SubscriptionPlan", back_populates="parking", cascade="all, delete-orphan")
+    alerts = relationship("Alert", back_populates="parking", cascade="all, delete-orphan")
 
 
 class Device(Base):
@@ -78,6 +103,8 @@ class Device(Base):
 
     parking = relationship("Parking", back_populates="devices")
     whitelist = relationship("WhitelistEntry", back_populates="device", cascade="all, delete-orphan")
+    access_logs = relationship("AccessLog", back_populates="device", cascade="all, delete-orphan")
+    alerts = relationship("Alert", back_populates="device")
 
 
 class WhitelistEntry(Base):
@@ -108,6 +135,7 @@ class Subscriber(Base):
     created_at = Column(Float, default=time.time)
 
     subscriptions = relationship("Subscription", back_populates="subscriber", cascade="all, delete-orphan")
+    payments = relationship("Payment", back_populates="subscriber", cascade="all, delete-orphan")
 
 
 class SubscriptionPlan(Base):
@@ -142,3 +170,50 @@ class Subscription(Base):
 
     subscriber = relationship("Subscriber", back_populates="subscriptions")
     plan = relationship("SubscriptionPlan", back_populates="subscriptions")
+    payments = relationship("Payment", back_populates="subscription", cascade="all, delete-orphan")
+
+
+class AccessLog(Base):
+    __tablename__ = "access_logs"
+    id = Column(Integer, primary_key=True)
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
+    plate = Column(String(20), nullable=False)
+    result = Column(Enum(AccessResult), nullable=False)
+    confidence = Column(Float, default=0.0)
+    image_path = Column(String(255), default="")
+    created_at = Column(Float, default=time.time)
+
+    device = relationship("Device", back_populates="access_logs")
+
+
+class Alert(Base):
+    __tablename__ = "alerts"
+    id = Column(Integer, primary_key=True)
+    parking_id = Column(Integer, ForeignKey("parkings.id", ondelete="CASCADE"), nullable=False)
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="SET NULL"), nullable=True)
+    alert_type = Column(Enum(AlertType), nullable=False)
+    severity = Column(Enum(AlertSeverity), default=AlertSeverity.WARNING)
+    message = Column(String(500), nullable=False)
+    plate = Column(String(20), default="")
+    is_read = Column(Boolean, default=False)
+    created_at = Column(Float, default=time.time)
+
+    parking = relationship("Parking", back_populates="alerts")
+    device = relationship("Device", back_populates="alerts")
+
+
+class Payment(Base):
+    __tablename__ = "payments"
+    id = Column(Integer, primary_key=True)
+    subscriber_id = Column(Integer, ForeignKey("subscribers.id", ondelete="CASCADE"), nullable=False)
+    subscription_id = Column(Integer, ForeignKey("subscriptions.id", ondelete="SET NULL"), nullable=True)
+    amount_cents = Column(Integer, nullable=False)
+    status = Column(Enum(PaymentStatus), default=PaymentStatus.SUCCEEDED)
+    stripe_payment_intent_id = Column(String(255), default="")
+    stripe_charge_id = Column(String(255), default="")
+    refund_amount_cents = Column(Integer, default=0)
+    description = Column(String(255), default="")
+    created_at = Column(Float, default=time.time)
+
+    subscriber = relationship("Subscriber", back_populates="payments")
+    subscription = relationship("Subscription", back_populates="payments")

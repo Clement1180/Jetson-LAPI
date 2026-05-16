@@ -51,19 +51,19 @@ web/                       # Plateforme web SaaS
     config.py              # Settings (env vars, Stripe keys, OTA_STORAGE_DIR, WEB_BASE_URL, LAPI_ENV)
     security.py            # CSRF middleware, security headers, rate limiting, password policy, input validation
     database.py            # SQLAlchemy + SQLite/PostgreSQL
-    models.py              # ORM: Admin, Tenant, TenantUser, Parking, Device, WhitelistEntry, Subscriber, SubscriptionPlan, Subscription
+    models.py              # ORM: Admin, Tenant, TenantUser, Parking, Device, WhitelistEntry, Subscriber, SubscriptionPlan, Subscription, AccessLog, Alert, Payment
     auth.py                # JWT cookies + hash password (3 rôles: admin/tenant/subscriber)
-    mqtt_publisher.py      # Publie vers les devices via MQTT (whitelist + OTA + accès)
+    mqtt_publisher.py      # Publie vers les devices via MQTT + souscrit access/log et status (remontée edge)
     templates_env.py       # Jinja2 templates partagé + filtre timestamp_to_date
     subscription_sync.py   # Sync abonnement → whitelist MQTT + vérification expirations + avertissements
     email_service.py       # Service email SMTP (confirmation paiement, avertissement expiration, notification gestionnaire)
     routers/
       auth_routes.py       # Login/logout (admin, tenant, subscriber register/login)
       admin.py             # CRUD tenants/users/parkings/devices + OTA upload/push
-      dashboard.py         # Gestion whitelist + CRUD plans d'abonnement par parking
+      dashboard.py         # Gestion whitelist + CRUD plans + logs accès + alertes
       access.py            # Page publique accès QR code (plaque + nom + TOTP optionnel)
-      subscribe.py         # Espace abonné: liste parkings, plans, checkout Stripe, compte, annulation
-      stripe_webhook.py    # Webhook Stripe (checkout.session.completed, invoice.payment_failed)
+      subscribe.py         # Espace abonné: liste parkings, plans, checkout Stripe, compte, paiements, annulation
+      stripe_webhook.py    # Webhook Stripe (checkout.session.completed, invoice.payment_failed, charge.refunded)
     templates/
       login.html           # Page de connexion (admin/tenant)
       base.html            # Layout de base
@@ -76,12 +76,15 @@ web/                       # Plateforme web SaaS
         parking_detail.html # Détail parking + lien gestion abonnements
         device_whitelist.html # Whitelist avec QR TOTP
         plans.html          # CRUD plans d'abonnement (prix, durée, renouvellement)
+        access_logs.html    # Historique des passages (plaque, résultat, device, confiance)
+        alerts.html         # Alertes temps réel (accès refusé, device offline)
       subscribe/
         register.html       # Inscription abonné (email, plaque, mot de passe)
         login.html          # Connexion abonné
         parkings.html       # Liste des parkings avec abonnements disponibles
         plans.html          # Choix du plan + option renouvellement auto
         account.html        # Compte abonné (abonnements actifs, annulation, toggle renew)
+        payments.html       # Historique des paiements (montant, statut, remboursements)
         success.html        # Confirmation paiement / activation
       access/
         form.html           # Page publique d'accès par QR code
@@ -170,6 +173,21 @@ systemd/                   # (legacy, remplacé par deploy/etc/systemd/)
 - [x] Email notification au gestionnaire de parking lors d'un nouvel abonnement
 - [x] Email avertissement 5 jours avant expiration (avec flag anti-doublon)
 
+### Web (Logs d'accès, Alertes, Paiements)
+- [x] Modèle AccessLog: historique des passages (plaque, résultat, confiance, device, timestamp)
+- [x] Modèle Alert: alertes temps réel (accès refusé, device offline/online, sévérité)
+- [x] Modèle Payment: historique paiements (montant, statut, remboursement, lien Stripe)
+- [x] Remontée edge → cloud via MQTT topic `lapi/{device_id}/access/log`
+- [x] Heartbeat edge via MQTT topic `lapi/{device_id}/status` (détection offline)
+- [x] Dashboard: page historique accès par parking (`/dashboard/parking/{id}/logs`)
+- [x] Dashboard: page alertes par parking (`/dashboard/parking/{id}/alerts`) + marquage lu
+- [x] Détection automatique device offline (pas de heartbeat > 5 min) + alerte + email
+- [x] Email d'alerte au gestionnaire (accès refusé, device offline) via `send_alert_notification()`
+- [x] Espace abonné: page historique paiements (`/subscribe/payments`)
+- [x] Webhook Stripe `charge.refunded`: remboursement total = annulation abonnement + retrait plaque
+- [x] Webhook Stripe: remboursement partiel tracé dans Payment sans annulation
+- [x] Création automatique Payment à chaque checkout (Stripe + mode dev)
+
 ### Déploiement
 - [x] install.sh (paquets, user, venv, configs, services, firewall)
 - [x] provision.sh (identité unique du boîtier, credentials MQTT)
@@ -231,12 +249,12 @@ systemd/                   # (legacy, remplacé par deploy/etc/systemd/)
 - [ ] Benchmark C++ vs Python sur le Jetson
 
 ### Priorité 5 — Fonctionnalités additionnelles
+- [x] **Logs d'accès consultables sur le dashboard** (historique passages, remontée edge → cloud via MQTT)
+- [x] **Alertes** (tentative d'accès refusée, boîtier hors ligne — notification temps réel au gestionnaire)
+- [x] Historique des paiements dans l'espace abonné (modèle Payment)
+- [x] Gestion des remboursements Stripe (logique refund dans webhook `charge.refunded`)
 - [ ] **Multi-plaques par abonné** (actuellement 1 plaque/compte — nécessite table `subscriber_plates`)
-- [ ] **Logs d'accès consultables sur le dashboard** (historique passages, remontée edge → cloud via MQTT)
-- [ ] **Alertes** (tentative d'accès refusée, boîtier hors ligne — notification temps réel au gestionnaire)
 - [ ] **Audit trail admin** (log des actions: modifications whitelist, connexions, changements config)
-- [ ] Historique des paiements dans l'espace abonné (modèle Payment/Invoice)
-- [ ] Gestion des remboursements Stripe (logique refund dans webhook)
 - [ ] Support plaques étrangères (regex configurable par pays)
 
 ## Exigences (Requirements)
@@ -256,9 +274,11 @@ systemd/                   # (legacy, remplacé par deploy/etc/systemd/)
 | FR10 | Sync auto abonnement → whitelist (activation/expiration/annulation) | ✅ Done |
 | FR11 | Gestion plans tarifaires par le gestionnaire (CRUD, durée, prix) | ✅ Done |
 | FR12 | Multi-plaques par abonné | ❌ À faire (1 plaque/compte actuellement) |
-| FR13 | Historique des paiements (modèle Payment/Invoice) | ❌ À faire |
-| FR14 | Logs d'accès consultables sur dashboard (remontée edge → cloud) | ❌ À faire |
-| FR15 | Audit trail admin (log actions, connexions, modifications) | ❌ À faire |
+| FR13 | Historique des paiements (modèle Payment) | ✅ Done |
+| FR14 | Logs d'accès consultables sur dashboard (remontée edge → cloud) | ✅ Done |
+| FR15 | Alertes (accès refusé, device offline → email gestionnaire) | ✅ Done |
+| FR16 | Remboursements Stripe (charge.refunded �� annulation abonnement) | ✅ Done |
+| FR17 | Audit trail admin (log actions, connexions, modifications) | ❌ À faire |
 
 ### Non-fonctionnelles
 | ID | Description | Statut |
@@ -300,7 +320,9 @@ journalctl -u mosquitto -f
 
 - Python 3.10+ requis (frozen dataclasses, match statements)
 - Web: admin créé via env vars `LAPI_ADMIN_USERNAME` + `LAPI_ADMIN_PASSWORD` (obligatoire au 1er lancement)
-- Edge MQTT topics locaux: `lapi/whitelist/{sync|add|remove}`, `lapi/ota/update`, `lapi/access/open`
+- Edge MQTT topics locaux: `lapi/whitelist/{sync|add|remove}`, `lapi/ota/update`, `lapi/access/open`, `lapi/access/log`, `lapi/status`
+- Edge publie `lapi/access/log` à chaque décision (granted/denied) + `lapi/status` toutes les 300 frames (heartbeat)
+- Web souscrit `lapi/+/access/log` et `lapi/+/status` pour alimenter AccessLog/Alert et détecter les devices offline
 - Bridge Mosquitto remap: `lapi/{device_id}/{whitelist|ota|access}/X` (cloud) → `lapi/{whitelist|ota|access}/X` (local)
 - Le web et la Jetson NE SONT PAS sur le même réseau directement. Il faut un broker MQTT intermédiaire (cloud ou LAN pour les tests)
 - OTA: packages stockés dans `web/app/static/ota/`, SHA256 calculé à l'upload, vérification côté edge avant installation
@@ -323,6 +345,14 @@ journalctl -u mosquitto -f
 - Annulation: retire la plaque uniquement s'il n'existe pas d'autre abonnement actif sur le même parking
 - Espace abonné public: `/subscribe/parkings`, `/subscribe/parking/{id}`, `/subscribe/account`
 - Dashboard tenant: gestion plans via `/dashboard/parking/{id}/plans`
+- Dashboard tenant: historique accès via `/dashboard/parking/{id}/logs` (200 derniers passages)
+- Dashboard tenant: alertes via `/dashboard/parking/{id}/alerts` (marquage lu en masse)
+- Espace abonné: historique paiements via `/subscribe/payments`
+- Alertes: modèle Alert (type, sévérité, message, plaque, is_read) + email au tenant.contact_email
+- Détection device offline: t��che async toutes les 2 min, device sans heartbeat > 5 min → alerte CRITICAL
+- Payments: modèle Payment (amount_cents, status, stripe_payment_intent_id, refund_amount_cents)
+- Stripe webhook `charge.refunded`: remboursement total annule l'abonnement et retire la plaque
+- Stripe webhook `charge.refunded`: remboursement partiel tracé sans annulation d'abonnement
 - Sécurité: module `security.py` centralise CSRF, headers, rate limiting, validation
 - `LAPI_ENV=production` active les contrôles stricts (SECRET_KEY obligatoire, Stripe webhook obligatoire, password policy sur admin)
 - CSRF: cookie `csrf_token` + champ hidden `csrf_token` dans tous les formulaires POST, rotation à chaque requête POST

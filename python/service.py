@@ -216,6 +216,9 @@ class LAPIService:
                     granted = db.check_plate(confirmed)
                     db.log_access(confirmed, granted)
 
+                    if mqtt_sync:
+                        mqtt_sync.publish_access_log(confirmed, granted)
+
                     if granted:
                         log.info(f"ACCES AUTORISE: {confirmed} (track #{track.id})")
                         relay.trigger(confirmed)

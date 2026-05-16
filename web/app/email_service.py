@@ -150,6 +150,68 @@ def send_expiry_warning(subscriber, subscription, days_remaining: int):
     )
 
 
+def send_alert_notification(device, alert):
+    """Email d'alerte au gestionnaire (acces refuse, device offline)."""
+    parking = device.parking
+    tenant = parking.tenant
+    if not tenant.contact_email:
+        return
+
+    parking_name = _esc(parking.name)
+    device_name = _esc(device.name or device.serial_number)
+    message = _esc(alert.message)
+    severity = alert.severity.value
+    alert_type = alert.alert_type.value
+
+    if severity == "critical":
+        color = "#dc2626"
+        label = "CRITIQUE"
+    elif severity == "warning":
+        color = "#f59e0b"
+        label = "ATTENTION"
+    else:
+        color = "#2563eb"
+        label = "INFO"
+
+    type_labels = {
+        "access_denied": "Acces refuse",
+        "device_offline": "Dispositif hors ligne",
+        "device_online": "Dispositif en ligne",
+    }
+    type_label = type_labels.get(alert_type, alert_type)
+
+    plate_row = ""
+    if alert.plate:
+        plate_row = f'<tr><td style="padding: 0.5rem; color: #64748b;">Plaque</td><td style="padding: 0.5rem; font-family: monospace; font-weight: 600;">{_esc(alert.plate)}</td></tr>'
+
+    html_content = f"""\
+<html>
+<body style="font-family: -apple-system, sans-serif; color: #1e293b; max-width: 600px; margin: 0 auto;">
+  <div style="background: {color}; color: white; padding: 1.5rem; text-align: center;">
+    <h1 style="margin: 0; font-size: 1.3rem;">LAPI - Alerte {label}</h1>
+  </div>
+  <div style="padding: 1.5rem; background: #f8fafc; border: 1px solid #e2e8f0;">
+    <p>Bonjour,</p>
+    <p>Une alerte a ete declenchee sur votre parking <strong>{parking_name}</strong>.</p>
+    <table style="width: 100%; border-collapse: collapse; margin: 1rem 0;">
+      <tr><td style="padding: 0.5rem; color: #64748b;">Type</td><td style="padding: 0.5rem; font-weight: 600;">{_esc(type_label)}</td></tr>
+      <tr><td style="padding: 0.5rem; color: #64748b;">Dispositif</td><td style="padding: 0.5rem;">{device_name}</td></tr>
+      <tr><td style="padding: 0.5rem; color: #64748b;">Message</td><td style="padding: 0.5rem;">{message}</td></tr>
+      {plate_row}
+      <tr><td style="padding: 0.5rem; color: #64748b;">Date</td><td style="padding: 0.5rem;">{_ts_to_date(alert.created_at)}</td></tr>
+    </table>
+    <p style="color: #64748b; font-size: 0.85rem;">Connectez-vous au dashboard pour plus de details.</p>
+  </div>
+</body>
+</html>"""
+
+    _send_email(
+        tenant.contact_email,
+        f"LAPI - Alerte {type_label} sur {parking.name}",
+        html_content,
+    )
+
+
 def send_manager_new_subscription(tenant, subscriber, subscription):
     """Email de notification au gestionnaire de parking lors d'un nouvel abonnement."""
     if not tenant.contact_email:

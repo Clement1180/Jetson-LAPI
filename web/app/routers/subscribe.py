@@ -9,7 +9,7 @@ from ..database import get_db
 from ..auth import require_subscriber
 from ..models import (
     Parking, Subscriber, SubscriptionPlan, Subscription,
-    SubscriptionStatus, PlanDuration,
+    SubscriptionStatus, PlanDuration, Payment, PaymentStatus,
 )
 from ..config import STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY, WEB_BASE_URL, STRIPE_WEBHOOK_SECRET
 from ..subscription_sync import (
@@ -140,6 +140,18 @@ def checkout(request: Request, plan_id: int, auto_renew: bool = Form(False),
     db.commit()
     db.refresh(subscription)
     activate_subscription_plates(db, subscription)
+
+    payment = Payment(
+        subscriber_id=subscriber.id,
+        subscription_id=subscription.id,
+        amount_cents=plan.price_cents,
+        status=PaymentStatus.SUCCEEDED,
+        description=f"{plan.name} - {plan.parking.name} (dev)",
+        created_at=now,
+    )
+    db.add(payment)
+    db.commit()
+
     send_payment_confirmation(subscriber, subscription)
     send_manager_new_subscription(plan.parking.tenant, subscriber, subscription)
     return RedirectResponse(url="/subscribe/account", status_code=303)
@@ -235,3 +247,22 @@ def toggle_auto_renew(request: Request, subscription_id: int,
         subscription.auto_renew = not subscription.auto_renew
         db.commit()
     return RedirectResponse(url="/subscribe/account", status_code=303)
+
+
+@router.get("/payments", response_class=HTMLResponse)
+def payment_history(request: Request, db: Session = Depends(get_db)):
+    user = require_subscriber(request)
+    subscriber = db.query(Subscriber).filter(Subscriber.id == int(user["sub"])).first()
+    if not subscriber:
+        return RedirectResponse(url="/subscribe/login", status_code=303)
+
+    payments = db.query(Payment).filter(
+        Payment.subscriber_id == subscriber.id,
+    ).order_by(Payment.created_at.desc()).all()
+
+    return templates.TemplateResponse(request, "subscribe/payments.html", {
+        "subscriber": subscriber,
+        "payments": payments,
+        "PaymentStatus": PaymentStatus,
+        "csrf_token": request.cookies.get("csrf_token", ""),
+    })

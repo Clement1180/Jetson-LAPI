@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Alertes - {{ parking.name }}{% endblock %}
+
+{% block nav %}
+<nav>
+  <a href="/dashboard" class="brand">LAPI</a>
+  <div class="nav-right">
+    <span>{{ user.username }}</span>
+    <a href="/logout">Deconnexion</a>
+  </div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="/dashboard">Parkings</a> / <a href="/dashboard/parking/{{ parking.id }}">{{ parking.name }}</a> / Alertes
+</div>
+
+<div class="page-header">
+  <h1>Alertes</h1>
+  <div>
+    <a href="/dashboard/parking/{{ parking.id }}/logs" class="btn btn-secondary">Historique acces</a>
+    <form method="post" action="/dashboard/parking/{{ parking.id }}/alerts/mark-read" style="display:inline;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-primary">Tout marquer lu</button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  {% if alerts %}
+  <table>
+    <thead>
+      <tr><th>Date</th><th>Type</th><th>Severite</th><th>Message</th><th>Dispositif</th><th>Statut</th></tr>
+    </thead>
+    <tbody>
+      {% for alert in alerts %}
+      <tr{% if not alert.is_read %} style="background:var(--yellow-50, #fffbeb);"{% endif %}>
+        <td>{{ alert.created_at | timestamp_to_date }}</td>
+        <td>
+          {% if alert.alert_type.value == "access_denied" %}
+            Acces refuse
+          {% elif alert.alert_type.value == "device_offline" %}
+            Hors ligne
+          {% elif alert.alert_type.value == "device_online" %}
+            En ligne
+          {% endif %}
+        </td>
+        <td>
+          {% if alert.severity.value == "critical" %}
+            <span class="badge badge-danger">Critique</span>
+          {% elif alert.severity.value == "warning" %}
+            <span class="badge badge-warning">Attention</span>
+          {% else %}
+            <span class="badge badge-info">Info</span>
+          {% endif %}
+        </td>
+        <td>{{ alert.message }}</td>
+        <td>{{ devices_map.get(alert.device_id, {}).name or "-" if alert.device_id else "-" }}</td>
+        <td>
+          {% if alert.is_read %}
+            <span style="color:var(--gray-400);">Lu</span>
+          {% else %}
+            <span class="badge badge-warning">Nouveau</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:var(--gray-400);text-align:center;padding:2rem;">Aucune alerte.</p>
+  {% endif %}
+</div>
+{% endblock %}

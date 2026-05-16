@@ -40,6 +40,7 @@ if _sentry_dsn:
 log = logging.getLogger("lapi.web")
 
 _expiry_task = None
+_offline_task = None
 
 
 async def _subscription_expiry_loop():
@@ -58,16 +59,52 @@ async def _subscription_expiry_loop():
             log.error(f"Erreur verification abonnements: {e}")
 
 
+async def _device_offline_check_loop():
+    """Mark devices offline if no heartbeat received within 5 minutes."""
+    while True:
+        await asyncio.sleep(120)
+        try:
+            from .models import Device, Alert, AlertType, AlertSeverity
+            db = SessionLocal()
+            threshold = time.time() - 300
+            devices = db.query(Device).filter(
+                Device.is_online == True,
+                Device.last_seen < threshold,
+                Device.last_seen > 0,
+            ).all()
+            for device in devices:
+                device.is_online = False
+                alert = Alert(
+                    parking_id=device.parking_id,
+                    device_id=device.id,
+                    alert_type=AlertType.DEVICE_OFFLINE,
+                    severity=AlertSeverity.CRITICAL,
+                    message=f"Dispositif {device.name or device.serial_number} hors ligne",
+                    created_at=time.time(),
+                )
+                db.add(alert)
+                from .mqtt_publisher import _notify_alert_async
+                _notify_alert_async(device, alert)
+            if devices:
+                db.commit()
+                log.warning(f"{len(devices)} dispositif(s) marque(s) hors ligne")
+            db.close()
+        except Exception as e:
+            log.error(f"Erreur verification devices offline: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _expiry_task
+    global _expiry_task, _offline_task
     init_db()
     _ensure_admin()
     os.makedirs(OTA_STORAGE_DIR, exist_ok=True)
-    init_mqtt()
+    init_mqtt(session_factory=SessionLocal)
     _expiry_task = asyncio.create_task(_subscription_expiry_loop())
+    _offline_task = asyncio.create_task(_device_offline_check_loop())
     yield
     _expiry_task.cancel()
+    _offline_task.cancel()
     stop_mqtt()
 
 
