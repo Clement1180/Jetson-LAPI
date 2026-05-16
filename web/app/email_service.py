@@ -1,3 +1,4 @@
+import html
 import logging
 import smtplib
 import threading
@@ -21,6 +22,10 @@ DURATION_LABELS_FR = {
 }
 
 
+def _esc(value) -> str:
+    return html.escape(str(value), quote=True)
+
+
 def _ts_to_date(ts: float) -> str:
     return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%d/%m/%Y")
 
@@ -37,6 +42,7 @@ def _send_email(to: str, subject: str, html_body: str):
             msg["From"] = SMTP_FROM_EMAIL
             msg["To"] = to
             msg["Subject"] = subject
+
             msg.attach(MIMEText(html_body, "html", "utf-8"))
 
             if SMTP_USE_TLS:
@@ -63,20 +69,25 @@ def send_payment_confirmation(subscriber, subscription):
     duration_label = DURATION_LABELS_FR.get(plan.duration.value, plan.duration.value)
     price = f"{plan.price_cents / 100:.2f}"
 
-    html = f"""\
+    first_name = _esc(subscriber.first_name)
+    parking_name = _esc(parking.name)
+    plan_name = _esc(plan.name)
+    plate = _esc(subscriber.plate)
+
+    html_content = f"""\
 <html>
 <body style="font-family: -apple-system, sans-serif; color: #1e293b; max-width: 600px; margin: 0 auto;">
   <div style="background: #2563eb; color: white; padding: 1.5rem; text-align: center;">
     <h1 style="margin: 0; font-size: 1.3rem;">LAPI - Confirmation de paiement</h1>
   </div>
   <div style="padding: 1.5rem; background: #f8fafc; border: 1px solid #e2e8f0;">
-    <p>Bonjour {subscriber.first_name},</p>
+    <p>Bonjour {first_name},</p>
     <p>Votre abonnement a bien ete active. Voici le recapitulatif :</p>
     <table style="width: 100%; border-collapse: collapse; margin: 1rem 0;">
-      <tr><td style="padding: 0.5rem; color: #64748b;">Parking</td><td style="padding: 0.5rem; font-weight: 600;">{parking.name}</td></tr>
-      <tr><td style="padding: 0.5rem; color: #64748b;">Formule</td><td style="padding: 0.5rem; font-weight: 600;">{plan.name} ({duration_label})</td></tr>
-      <tr><td style="padding: 0.5rem; color: #64748b;">Montant</td><td style="padding: 0.5rem; font-weight: 600;">{price} &euro;</td></tr>
-      <tr><td style="padding: 0.5rem; color: #64748b;">Plaque</td><td style="padding: 0.5rem; font-weight: 600; font-family: monospace;">{subscriber.plate}</td></tr>
+      <tr><td style="padding: 0.5rem; color: #64748b;">Parking</td><td style="padding: 0.5rem; font-weight: 600;">{parking_name}</td></tr>
+      <tr><td style="padding: 0.5rem; color: #64748b;">Formule</td><td style="padding: 0.5rem; font-weight: 600;">{plan_name} ({_esc(duration_label)})</td></tr>
+      <tr><td style="padding: 0.5rem; color: #64748b;">Montant</td><td style="padding: 0.5rem; font-weight: 600;">{_esc(price)} &euro;</td></tr>
+      <tr><td style="padding: 0.5rem; color: #64748b;">Plaque</td><td style="padding: 0.5rem; font-weight: 600; font-family: monospace;">{plate}</td></tr>
       <tr><td style="padding: 0.5rem; color: #64748b;">Debut</td><td style="padding: 0.5rem;">{_ts_to_date(subscription.start_date)}</td></tr>
       <tr><td style="padding: 0.5rem; color: #64748b;">Fin</td><td style="padding: 0.5rem;">{_ts_to_date(subscription.end_date)}</td></tr>
       <tr><td style="padding: 0.5rem; color: #64748b;">Renouvellement auto</td><td style="padding: 0.5rem;">{"Oui" if subscription.auto_renew else "Non"}</td></tr>
@@ -90,7 +101,7 @@ def send_payment_confirmation(subscriber, subscription):
     _send_email(
         subscriber.email,
         f"LAPI - Confirmation abonnement {parking.name}",
-        html,
+        html_content,
     )
 
 
@@ -99,26 +110,31 @@ def send_expiry_warning(subscriber, subscription, days_remaining: int):
     plan = subscription.plan
     parking = plan.parking
 
+    first_name = _esc(subscriber.first_name)
+    parking_name = _esc(parking.name)
+    plan_name = _esc(plan.name)
+    plate = _esc(subscriber.plate)
+
     renew_msg = (
         "Votre abonnement est configure en renouvellement automatique, aucune action n'est requise."
         if subscription.auto_renew
         else "Pensez a renouveler votre abonnement depuis votre espace personnel pour conserver votre acces."
     )
 
-    html = f"""\
+    html_content = f"""\
 <html>
 <body style="font-family: -apple-system, sans-serif; color: #1e293b; max-width: 600px; margin: 0 auto;">
   <div style="background: #f59e0b; color: white; padding: 1.5rem; text-align: center;">
     <h1 style="margin: 0; font-size: 1.3rem;">LAPI - Abonnement bientot expire</h1>
   </div>
   <div style="padding: 1.5rem; background: #f8fafc; border: 1px solid #e2e8f0;">
-    <p>Bonjour {subscriber.first_name},</p>
-    <p>Votre abonnement au parking <strong>{parking.name}</strong> expire dans
+    <p>Bonjour {first_name},</p>
+    <p>Votre abonnement au parking <strong>{parking_name}</strong> expire dans
        <strong>{days_remaining} jour{"s" if days_remaining > 1 else ""}</strong>
        (le {_ts_to_date(subscription.end_date)}).</p>
     <table style="width: 100%; border-collapse: collapse; margin: 1rem 0;">
-      <tr><td style="padding: 0.5rem; color: #64748b;">Formule</td><td style="padding: 0.5rem; font-weight: 600;">{plan.name}</td></tr>
-      <tr><td style="padding: 0.5rem; color: #64748b;">Plaque</td><td style="padding: 0.5rem; font-family: monospace;">{subscriber.plate}</td></tr>
+      <tr><td style="padding: 0.5rem; color: #64748b;">Formule</td><td style="padding: 0.5rem; font-weight: 600;">{plan_name}</td></tr>
+      <tr><td style="padding: 0.5rem; color: #64748b;">Plaque</td><td style="padding: 0.5rem; font-family: monospace;">{plate}</td></tr>
       <tr><td style="padding: 0.5rem; color: #64748b;">Renouvellement auto</td><td style="padding: 0.5rem;">{"Oui" if subscription.auto_renew else "Non"}</td></tr>
     </table>
     <p>{renew_msg}</p>
@@ -130,7 +146,7 @@ def send_expiry_warning(subscriber, subscription, days_remaining: int):
     _send_email(
         subscriber.email,
         f"LAPI - Votre abonnement {parking.name} expire dans {days_remaining}j",
-        html,
+        html_content,
     )
 
 
@@ -145,7 +161,14 @@ def send_manager_new_subscription(tenant, subscriber, subscription):
     duration_label = DURATION_LABELS_FR.get(plan.duration.value, plan.duration.value)
     price = f"{plan.price_cents / 100:.2f}"
 
-    html = f"""\
+    parking_name = _esc(parking.name)
+    first_name = _esc(subscriber.first_name)
+    last_name = _esc(subscriber.last_name)
+    email = _esc(subscriber.email)
+    plate = _esc(subscriber.plate)
+    plan_name = _esc(plan.name)
+
+    html_content = f"""\
 <html>
 <body style="font-family: -apple-system, sans-serif; color: #1e293b; max-width: 600px; margin: 0 auto;">
   <div style="background: #16a34a; color: white; padding: 1.5rem; text-align: center;">
@@ -153,13 +176,13 @@ def send_manager_new_subscription(tenant, subscriber, subscription):
   </div>
   <div style="padding: 1.5rem; background: #f8fafc; border: 1px solid #e2e8f0;">
     <p>Bonjour,</p>
-    <p>Un nouvel abonnement vient d'etre souscrit sur votre parking <strong>{parking.name}</strong>.</p>
+    <p>Un nouvel abonnement vient d'etre souscrit sur votre parking <strong>{parking_name}</strong>.</p>
     <table style="width: 100%; border-collapse: collapse; margin: 1rem 0;">
-      <tr><td style="padding: 0.5rem; color: #64748b;">Abonne</td><td style="padding: 0.5rem; font-weight: 600;">{subscriber.first_name} {subscriber.last_name}</td></tr>
-      <tr><td style="padding: 0.5rem; color: #64748b;">Email</td><td style="padding: 0.5rem;">{subscriber.email}</td></tr>
-      <tr><td style="padding: 0.5rem; color: #64748b;">Plaque</td><td style="padding: 0.5rem; font-family: monospace; font-weight: 600;">{subscriber.plate}</td></tr>
-      <tr><td style="padding: 0.5rem; color: #64748b;">Formule</td><td style="padding: 0.5rem;">{plan.name} ({duration_label})</td></tr>
-      <tr><td style="padding: 0.5rem; color: #64748b;">Montant</td><td style="padding: 0.5rem; font-weight: 600;">{price} &euro;</td></tr>
+      <tr><td style="padding: 0.5rem; color: #64748b;">Abonne</td><td style="padding: 0.5rem; font-weight: 600;">{first_name} {last_name}</td></tr>
+      <tr><td style="padding: 0.5rem; color: #64748b;">Email</td><td style="padding: 0.5rem;">{email}</td></tr>
+      <tr><td style="padding: 0.5rem; color: #64748b;">Plaque</td><td style="padding: 0.5rem; font-family: monospace; font-weight: 600;">{plate}</td></tr>
+      <tr><td style="padding: 0.5rem; color: #64748b;">Formule</td><td style="padding: 0.5rem;">{plan_name} ({_esc(duration_label)})</td></tr>
+      <tr><td style="padding: 0.5rem; color: #64748b;">Montant</td><td style="padding: 0.5rem; font-weight: 600;">{_esc(price)} &euro;</td></tr>
       <tr><td style="padding: 0.5rem; color: #64748b;">Periode</td><td style="padding: 0.5rem;">{_ts_to_date(subscription.start_date)} &rarr; {_ts_to_date(subscription.end_date)}</td></tr>
       <tr><td style="padding: 0.5rem; color: #64748b;">Renouvellement auto</td><td style="padding: 0.5rem;">{"Oui" if subscription.auto_renew else "Non"}</td></tr>
     </table>
@@ -171,5 +194,5 @@ def send_manager_new_subscription(tenant, subscriber, subscription):
     _send_email(
         tenant.contact_email,
         f"LAPI - Nouvel abonnement sur {parking.name} ({subscriber.plate})",
-        html,
+        html_content,
     )

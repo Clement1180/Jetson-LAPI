@@ -1,0 +1,71 @@
+# Configuration de calibration pour tests terrain
+# Ajuster ces valeurs lors du déploiement avec une caméra réelle
+
+# --- OCR ---
+ocr:
+  # Seuil de confiance minimum pour accepter une lecture OCR
+  min_confidence: 0.7
+  # Nombre de caractères attendus (plaques SIV = 7)
+  expected_length: 7
+
+# --- Vote multi-trames ---
+voter:
+  # Nombre minimum de lectures cohérentes pour valider
+  min_votes: 3
+  # Ratio de consensus minimum (60% = 3/5 lectures identiques)
+  min_ratio: 0.6
+  # Historique max par track (évite la dérive mémoire)
+  max_history: 20
+
+# --- GPIO ---
+gpio:
+  # Durée d'activation du relais (ms)
+  pulse_duration_ms: 500
+  # Temps minimum entre deux activations pour la même plaque (secondes)
+  cooldown_seconds: 30
+  # Pin GPIO pour le relais (Jetson)
+  relay_pin: 12
+
+# --- Caméra ---
+camera:
+  # Résolution
+  width: 1920
+  height: 1080
+  # FPS cible
+  fps: 30
+  # Mode (csi, usb, v4l2)
+  mode: csi
+  # Exposition automatique
+  auto_exposure: true
+  # Gain pour vision nocturne (0=auto)
+  gain: 0
+
+# --- Détection ---
+detection:
+  # Seuil de confiance YOLO véhicule
+  vehicle_confidence: 0.5
+  # Seuil de confiance YOLO plaque
+  plate_confidence: 0.6
+  # IoU minimum pour association tracking
+  iou_threshold: 0.3
+  # Distance max pour association (pixels normalisés)
+  max_distance: 0.3
+
+# --- Tracking ---
+tracking:
+  # Nombre de frames sans détection avant suppression du track
+  max_lost_frames: 30
+  # Nombre minimum de frames pour confirmer un nouveau track
+  min_confirm_frames: 3
+
+# --- Performances ---
+# Objectifs à vérifier avec tests/terrain/test_latency.py
+performance_targets:
+  # Latence end-to-end max (captation → relais GPIO)
+  max_e2e_latency_ms: 500
+  # Temps inférence YOLO max
+  max_inference_ms: 50
+  # FPS minimum acceptable
+  min_fps: 15
+  # Lookup whitelist max
+  max_lookup_us: 1.0

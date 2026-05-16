@@ -8,6 +8,7 @@ from ..database import get_db
 from ..auth import require_tenant
 from ..models import Tenant, Parking, Device, WhitelistEntry, SubscriptionPlan, Subscription, PlanDuration, SubscriptionStatus
 from ..mqtt_publisher import publish_plate_add, publish_plate_remove, publish_whitelist_sync
+from ..security import sanitize_string, validate_plate
 from .access import generate_totp_qr
 
 router = APIRouter(prefix="/dashboard")
@@ -23,6 +24,7 @@ def dashboard_home(request: Request, db: Session = Depends(get_db)):
     parkings = db.query(Parking).filter(Parking.tenant_id == tenant.id).all()
     return templates.TemplateResponse(request, "dashboard/parkings.html", {
         "user": user, "tenant": tenant, "parkings": parkings,
+        "csrf_token": request.cookies.get("csrf_token", ""),
     })
 
 
@@ -37,6 +39,7 @@ def parking_detail(request: Request, parking_id: int, db: Session = Depends(get_
         return RedirectResponse(url="/dashboard", status_code=303)
     return templates.TemplateResponse(request, "dashboard/parking_detail.html", {
         "user": user, "parking": parking,
+        "csrf_token": request.cookies.get("csrf_token", ""),
     })
 
 
@@ -56,6 +59,7 @@ def device_whitelist(request: Request, device_id: int, db: Session = Depends(get
                 totp_qrs[e.id] = generate_totp_qr(e, device.parking.name)
     return templates.TemplateResponse(request, "dashboard/device_whitelist.html", {
         "user": user, "device": device, "entries": entries, "totp_qrs": totp_qrs,
+        "csrf_token": request.cookies.get("csrf_token", ""),
     })
 
 
@@ -69,7 +73,10 @@ def add_plate(request: Request, device_id: int,
     if not device or device.parking.tenant_id != user["tenant_id"]:
         return RedirectResponse(url="/dashboard", status_code=303)
 
-    plate = plate.upper().strip()
+    plate = sanitize_string(plate, max_length=20).upper().replace(" ", "-")
+    label = sanitize_string(label, max_length=200)
+    owner_name = sanitize_string(owner_name, max_length=200)
+
     existing = db.query(WhitelistEntry).filter(
         WhitelistEntry.device_id == device_id,
         WhitelistEntry.plate == plate
@@ -157,6 +164,7 @@ def parking_plans(request: Request, parking_id: int, db: Session = Depends(get_d
         "duration_labels": DURATION_LABELS,
         "durations": list(PlanDuration),
         "active_sub_counts": active_sub_counts,
+        "csrf_token": request.cookies.get("csrf_token", ""),
     })
 
 
@@ -173,11 +181,26 @@ def add_plan(request: Request, parking_id: int,
     if not parking:
         return RedirectResponse(url="/dashboard", status_code=303)
 
-    price_cents = int(float(price.replace(",", ".")) * 100)
+    name = sanitize_string(name, max_length=200)
+    if not name:
+        return RedirectResponse(url=f"/dashboard/parking/{parking_id}/plans", status_code=303)
+
+    try:
+        price_cents = int(float(price.replace(",", ".")) * 100)
+    except (ValueError, TypeError):
+        return RedirectResponse(url=f"/dashboard/parking/{parking_id}/plans", status_code=303)
+    if price_cents <= 0:
+        return RedirectResponse(url=f"/dashboard/parking/{parking_id}/plans", status_code=303)
+
+    try:
+        duration_enum = PlanDuration(duration)
+    except ValueError:
+        return RedirectResponse(url=f"/dashboard/parking/{parking_id}/plans", status_code=303)
+
     plan = SubscriptionPlan(
         parking_id=parking_id,
         name=name,
-        duration=PlanDuration(duration),
+        duration=duration_enum,
         price_cents=price_cents,
         auto_renew_allowed=auto_renew_allowed,
     )

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Parking, Device, WhitelistEntry
 from ..mqtt_publisher import publish_plate_add
+from ..security import sanitize_string
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -41,9 +42,11 @@ def access_page(request: Request, parking_id: int, db: Session = Depends(get_db)
     if not parking:
         return templates.TemplateResponse(request, "access/form.html", {
             "parking": None, "error": None, "success": False,
+            "csrf_token": request.cookies.get("csrf_token", ""),
         })
     return templates.TemplateResponse(request, "access/form.html", {
         "parking": parking, "error": None, "success": False,
+        "csrf_token": request.cookies.get("csrf_token", ""),
     })
 
 
@@ -56,17 +59,19 @@ def access_submit(request: Request, parking_id: int,
     if not parking:
         return templates.TemplateResponse(request, "access/form.html", {
             "parking": None, "error": None, "success": False,
+            "csrf_token": request.cookies.get("csrf_token", ""),
         })
 
     ip = request.client.host
     if _rate_limited(ip):
         return templates.TemplateResponse(request, "access/form.html", {
             "parking": parking, "error": "Trop de tentatives. Reessayez dans quelques minutes.",
-            "success": False,
+            "success": False, "csrf_token": request.cookies.get("csrf_token", ""),
         })
 
-    plate = plate.upper().strip().replace(" ", "-")
-    owner_name = owner_name.strip()
+    plate = sanitize_string(plate, max_length=20).upper().replace(" ", "-")
+    owner_name = sanitize_string(owner_name, max_length=200)
+    totp_code = sanitize_string(totp_code, max_length=10)
 
     entry = db.query(WhitelistEntry).join(Device).filter(
         Device.parking_id == parking_id,
@@ -77,14 +82,14 @@ def access_submit(request: Request, parking_id: int,
         _log_attempt(ip)
         return templates.TemplateResponse(request, "access/form.html", {
             "parking": parking, "error": "Plaque non reconnue ou nom incorrect.",
-            "success": False,
+            "success": False, "csrf_token": request.cookies.get("csrf_token", ""),
         })
 
     if entry.owner_name.lower() != owner_name.lower():
         _log_attempt(ip)
         return templates.TemplateResponse(request, "access/form.html", {
             "parking": parking, "error": "Plaque non reconnue ou nom incorrect.",
-            "success": False,
+            "success": False, "csrf_token": request.cookies.get("csrf_token", ""),
         })
 
     if parking.require_totp:
@@ -93,14 +98,14 @@ def access_submit(request: Request, parking_id: int,
             return templates.TemplateResponse(request, "access/form.html", {
                 "parking": parking,
                 "error": "TOTP non configure pour cette plaque. Contactez votre gestionnaire.",
-                "success": False,
+                "success": False, "csrf_token": request.cookies.get("csrf_token", ""),
             })
         totp = pyotp.TOTP(entry.totp_secret)
         if not totp.verify(totp_code, valid_window=1):
             _log_attempt(ip)
             return templates.TemplateResponse(request, "access/form.html", {
                 "parking": parking, "error": "Code de verification incorrect.",
-                "success": False,
+                "success": False, "csrf_token": request.cookies.get("csrf_token", ""),
             })
 
     cooldown_key = f"{parking_id}:{plate}"
@@ -108,6 +113,7 @@ def access_submit(request: Request, parking_id: int,
     if cooldown_key in ACCESS_COOLDOWN and now - ACCESS_COOLDOWN[cooldown_key] < COOLDOWN_SECONDS:
         return templates.TemplateResponse(request, "access/form.html", {
             "parking": parking, "error": None, "success": True,
+            "csrf_token": request.cookies.get("csrf_token", ""),
         })
     ACCESS_COOLDOWN[cooldown_key] = now
 
@@ -119,6 +125,7 @@ def access_submit(request: Request, parking_id: int,
 
     return templates.TemplateResponse(request, "access/form.html", {
         "parking": parking, "error": None, "success": True,
+        "csrf_token": request.cookies.get("csrf_token", ""),
     })
 
 

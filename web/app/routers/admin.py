@@ -12,6 +12,7 @@ from ..database import get_db
 from ..auth import require_admin, hash_password
 from ..models import Tenant, TenantUser, Parking, Device, WhitelistEntry
 from ..mqtt_publisher import publish_ota_update
+from ..security import sanitize_string, validate_email, validate_password_strength
 
 router = APIRouter(prefix="/admin")
 templates = Jinja2Templates(directory="app/templates")
@@ -23,6 +24,7 @@ def admin_home(request: Request, db: Session = Depends(get_db)):
     tenants = db.query(Tenant).order_by(Tenant.created_at.desc()).all()
     return templates.TemplateResponse(request, "admin/tenants.html", {
         "user": user, "tenants": tenants,
+        "csrf_token": request.cookies.get("csrf_token", ""),
     })
 
 
@@ -32,6 +34,14 @@ def admin_home(request: Request, db: Session = Depends(get_db)):
 def create_tenant(request: Request, name: str = Form(...),
                   contact_email: str = Form(""), db: Session = Depends(get_db)):
     require_admin(request)
+    name = sanitize_string(name, max_length=200)
+    contact_email = sanitize_string(contact_email, max_length=254)
+    if not name:
+        return RedirectResponse(url="/admin", status_code=303)
+    if contact_email:
+        err = validate_email(contact_email)
+        if err:
+            return RedirectResponse(url="/admin", status_code=303)
     tenant = Tenant(name=name, contact_email=contact_email)
     db.add(tenant)
     db.commit()
@@ -46,6 +56,7 @@ def tenant_detail(request: Request, tenant_id: int, db: Session = Depends(get_db
         return RedirectResponse(url="/admin", status_code=303)
     return templates.TemplateResponse(request, "admin/tenant_detail.html", {
         "user": user, "tenant": tenant,
+        "csrf_token": request.cookies.get("csrf_token", ""),
     })
 
 
@@ -76,6 +87,18 @@ def create_user(request: Request, tenant_id: int,
                 username: str = Form(...), password: str = Form(...),
                 db: Session = Depends(get_db)):
     require_admin(request)
+    username = sanitize_string(username, max_length=150)
+    if not username:
+        return RedirectResponse(url=f"/admin/tenants/{tenant_id}", status_code=303)
+    pw_error = validate_password_strength(password)
+    if pw_error:
+        user = require_admin(request)
+        tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+        return templates.TemplateResponse(request, "admin/tenant_detail.html", {
+            "user": user, "tenant": tenant,
+            "csrf_token": request.cookies.get("csrf_token", ""),
+            "user_error_msg": pw_error,
+        })
     existing = db.query(TenantUser).filter(TenantUser.username == username).first()
     if existing:
         return RedirectResponse(url=f"/admin/tenants/{tenant_id}", status_code=303)
@@ -108,6 +131,10 @@ def create_parking(request: Request, tenant_id: int,
                    require_totp: str = Form(""),
                    db: Session = Depends(get_db)):
     require_admin(request)
+    name = sanitize_string(name, max_length=200)
+    address = sanitize_string(address, max_length=500)
+    if not name:
+        return RedirectResponse(url=f"/admin/tenants/{tenant_id}", status_code=303)
     parking = Parking(tenant_id=tenant_id, name=name, address=address,
                       require_totp=bool(require_totp))
     db.add(parking)
@@ -134,6 +161,11 @@ def create_device(request: Request, parking_id: int,
                   mqtt_client_id: str = Form(...),
                   db: Session = Depends(get_db)):
     user = require_admin(request)
+    serial_number = sanitize_string(serial_number, max_length=100)
+    name = sanitize_string(name, max_length=200)
+    mqtt_client_id = sanitize_string(mqtt_client_id, max_length=100)
+    if not serial_number or not mqtt_client_id:
+        return RedirectResponse(url="/admin", status_code=303)
     parking = db.query(Parking).filter(Parking.id == parking_id).first()
     if not parking:
         return RedirectResponse(url="/admin", status_code=303)
@@ -144,6 +176,7 @@ def create_device(request: Request, parking_id: int,
         tenant = db.query(Tenant).filter(Tenant.id == parking.tenant_id).first()
         return templates.TemplateResponse(request, "admin/tenant_detail.html", {
             "user": user, "tenant": tenant,
+            "csrf_token": request.cookies.get("csrf_token", ""),
             "device_error_parking": parking.id,
             "device_error_msg": f"Le {field} est deja utilise par un autre dispositif.",
         })
@@ -184,6 +217,7 @@ def ota_page(request: Request):
                 packages.append({"filename": f, "size_mb": round(size_mb, 2)})
     return templates.TemplateResponse(request, "admin/ota.html", {
         "user": user, "packages": packages,
+        "csrf_token": request.cookies.get("csrf_token", ""),
     })
 
 
@@ -191,6 +225,9 @@ def ota_page(request: Request):
 async def upload_ota(request: Request, version: str = Form(...),
                      package: UploadFile = File(...)):
     require_admin(request)
+    version = sanitize_string(version, max_length=50)
+    if not version or not version.replace(".", "").replace("-", "").replace("_", "").isalnum():
+        return RedirectResponse(url="/admin/ota", status_code=303)
     filename = f"lapi-{version}.tar.gz"
     filepath = os.path.join(OTA_STORAGE_DIR, filename)
     sha256 = hashlib.sha256()
@@ -211,6 +248,7 @@ def push_ota(request: Request, device_id: int, version: str = Form(...),
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         return RedirectResponse(url="/admin", status_code=303)
+    version = sanitize_string(version, max_length=50)
     filename = f"lapi-{version}.tar.gz"
     filepath = os.path.join(OTA_STORAGE_DIR, filename)
     meta_path = filepath + ".sha256"

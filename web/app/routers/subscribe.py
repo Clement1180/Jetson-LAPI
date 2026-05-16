@@ -53,6 +53,7 @@ def list_parkings(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(request, "subscribe/parkings.html", {
         "parkings_with_plans": parkings_with_plans,
         "duration_labels": DURATION_LABELS,
+        "csrf_token": request.cookies.get("csrf_token", ""),
     })
 
 
@@ -70,6 +71,7 @@ def parking_plans(request: Request, parking_id: int, db: Session = Depends(get_d
         "plans": plans,
         "duration_labels": DURATION_LABELS,
         "stripe_key": STRIPE_PUBLISHABLE_KEY,
+        "csrf_token": request.cookies.get("csrf_token", ""),
     })
 
 
@@ -125,7 +127,6 @@ def checkout(request: Request, plan_id: int, auto_renew: bool = Form(False),
         )
         return RedirectResponse(url=session.url, status_code=303)
 
-    # Mode sans Stripe : activation directe (dev/test)
     now = time.time()
     subscription = Subscription(
         subscriber_id=subscriber.id,
@@ -201,6 +202,7 @@ def account(request: Request, db: Session = Depends(get_db)):
         "duration_labels": DURATION_LABELS,
         "now": now,
         "SubscriptionStatus": SubscriptionStatus,
+        "csrf_token": request.cookies.get("csrf_token", ""),
     })
 
 

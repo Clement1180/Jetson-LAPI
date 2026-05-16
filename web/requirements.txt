@@ -10,3 +10,6 @@ paho-mqtt>=1.6.0,<2.0
 pyotp>=2.9.0
 qrcode[pil]>=7.4.0
 pyyaml>=6.0
+alembic>=1.13.0
+psycopg2-binary>=2.9.0
+sentry-sdk[fastapi]>=2.0.0

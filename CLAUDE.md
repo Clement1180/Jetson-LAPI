@@ -48,13 +48,12 @@ web/                       # Plateforme web SaaS
   run.py                   # Entry point (uvicorn)
   app/
     main.py                # FastAPI app + lifespan
-    config.py              # Settings (env vars, OTA_STORAGE_DIR, WEB_BASE_URL)
+    config.py              # Settings (env vars, Stripe keys, OTA_STORAGE_DIR, WEB_BASE_URL, LAPI_ENV)
+    security.py            # CSRF middleware, security headers, rate limiting, password policy, input validation
     database.py            # SQLAlchemy + SQLite/PostgreSQL
     models.py              # ORM: Admin, Tenant, TenantUser, Parking, Device, WhitelistEntry, Subscriber, SubscriptionPlan, Subscription
     auth.py                # JWT cookies + hash password (3 rôles: admin/tenant/subscriber)
     mqtt_publisher.py      # Publie vers les devices via MQTT (whitelist + OTA + accès)
-    config.py              # Settings (env vars, Stripe keys, OTA_STORAGE_DIR, WEB_BASE_URL)
-    database.py            # SQLAlchemy + SQLite/PostgreSQL
     templates_env.py       # Jinja2 templates partagé + filtre timestamp_to_date
     subscription_sync.py   # Sync abonnement → whitelist MQTT + vérification expirations + avertissements
     email_service.py       # Service email SMTP (confirmation paiement, avertissement expiration, notification gestionnaire)
@@ -181,36 +180,64 @@ systemd/                   # (legacy, remplacé par deploy/etc/systemd/)
 - [x] systemd complet (Restart=always, MemoryMax, WatchdogSec)
 - [x] sudoers OTA (restart service sans mot de passe)
 
+## Ce qui est FAIT (Priorités 0–3)
+
+### Priorité 0 — Sécurité ✅
+- [x] Protection CSRF sur tous les formulaires POST (admin, dashboard, subscribe, access)
+- [x] Headers sécurité: X-Frame-Options, X-Content-Type-Options, Strict-Transport-Security, Content-Security-Policy
+- [x] Supprimer les credentials admin hardcodés (`admin/admin`), forcer la création au premier lancement
+- [x] Rendre SECRET_KEY obligatoire (crash si env var absente, pas de valeur par défaut)
+- [x] Politique mot de passe renforcée (min 12 chars, majuscule, chiffre, spécial)
+- [x] Rate limiting sur `/login`, `/subscribe/login`, `/subscribe/register` (brute force)
+- [x] Vérification signature Stripe webhook obligatoire (crash si `STRIPE_WEBHOOK_SECRET` vide en prod)
+- [x] Échapper les données utilisateur dans les templates email (injection HTML)
+- [x] Validation/sanitization des entrées dans tous les routers (longueur, format, types)
+
+### Priorité 1 — Tests & Qualité ✅
+- [x] Suite de tests pytest — 95 tests (auth, paiements, rate limiting, CRUD whitelist, sync MQTT)
+- [x] Tests d'intégration Stripe (webhook, checkout flow, expiration)
+- [x] Tests edge: validation plaque, vote multi-trames, base whitelist
+- [x] Fichier `.env.example` documentant toutes les env vars requises
+- [x] Endpoint `/health` sur le web (pour monitoring externe)
+- [x] Gestion d'erreurs globale (exception handler, logging, pages 404/500 custom)
+
+### Priorité 2 — Infrastructure & Déploiement ✅
+- [x] Migrations DB avec Alembic (`web/alembic/`) — auto-migration en prod, `create_all()` en dev
+- [x] Support PostgreSQL (prod) + SQLite (dev) — via `LAPI_DATABASE_URL`
+- [x] Dockerfile + docker-compose (web + MQTT broker MQTTS + PostgreSQL)
+- [x] Pipeline CI/CD GitHub Actions (`.github/workflows/ci.yml`): lint, tests, build Docker, health check
+- [x] Broker MQTTs cloud via docker-compose (Mosquitto, TLS sur port 8883, auth password)
+- [x] Logging structuré JSON en prod (`web/app/logging_config.py`), texte en dev
+- [x] Intégration Sentry (via env `SENTRY_DSN`, optionnel)
+- [x] Script génération certificats TLS (`deploy/docker/generate-certs.sh`)
+
+### Priorité 3 — Tests terrain ✅
+- [x] Tests réseau LAN MQTTS (`tests/terrain/test_lan_mqtt.py`) — pub/sub, round-trip, latence
+- [x] Fichier de calibration (`tests/terrain/calibration.yaml`) — seuils OCR, vote, GPIO, caméra
+- [x] Benchmark latence end-to-end (`tests/terrain/test_latency.py`) — validation 2.4µs, voter 10µs, lookup 54ns, pipeline 19µs
+- [x] Tests résilience (`tests/terrain/test_resilience.py`) — hors-ligne, écritures concurrentes, crash DB, kill service
+
 ## Ce qui RESTE à faire
 
-### Priorité 1 — Tests terrain
-- [ ] Tester en réseau local (Mosquitto LAN comme broker commun entre web et Jetson)
-- [ ] Calibrer les seuils (confiance OCR, min_votes, cooldown GPIO) avec caméra réelle
-- [ ] Mesurer la latence end-to-end (objectif < 500ms captation → relais)
-- [ ] Valider la résilience (couper le réseau, tuer le process, saturer la mémoire)
+### Avant mise en prod (bloquant)
+- [ ] HTTPS obligatoire: configurer nginx/caddy en reverse proxy avec Let's Encrypt + redirect HTTP→HTTPS
+- [ ] Générer les certificats MQTTS (`deploy/docker/generate-certs.sh`) et créer le fichier `passwd` Mosquitto
+- [ ] Premier déploiement `docker-compose up` avec un vrai fichier `.env`
+- [ ] Corriger le mot de passe edge MQTT hardcodé (`deploy/install.sh:89`: `lapi-local-secret` en clair)
 
-### Priorité 2 — Performance (C++)
+### Priorité 4 — Performance (C++) — Sur Jetson uniquement
 - [ ] Porter le hot path en C++ (inférence TensorRT + pipeline)
 - [ ] Conversion modèles ONNX → TensorRT (.engine) pour le Jetson
 - [ ] Benchmark C++ vs Python sur le Jetson
 
-### Priorité 3 — Production web
-- [ ] HTTPS (Let's Encrypt / reverse proxy nginx)
-- [ ] Migration SQLite → PostgreSQL
-- [ ] Déploiement cloud (Docker, CI/CD)
-- [ ] Broker MQTTs cloud (Mosquitto ou service managé type HiveMQ/EMQX)
-- [ ] Sécurité: rate limiting, CSRF tokens, password policy
-
-### Priorité 4 — Fonctionnalités additionnelles
-- [ ] Logs d'accès consultables sur le dashboard (historique passages)
-- [ ] Alertes (tentative d'accès refusée, boîtier hors ligne)
-- [x] OTA updates (mise à jour du firmware/modèles à distance)
-- [x] Accès QR code fallback (plaque + nom + TOTP optionnel)
-- [x] Abonnements parking payant (Stripe + gestion durée/renouvellement)
+### Priorité 5 — Fonctionnalités additionnelles
+- [ ] **Multi-plaques par abonné** (actuellement 1 plaque/compte — nécessite table `subscriber_plates`)
+- [ ] **Logs d'accès consultables sur le dashboard** (historique passages, remontée edge → cloud via MQTT)
+- [ ] **Alertes** (tentative d'accès refusée, boîtier hors ligne — notification temps réel au gestionnaire)
+- [ ] **Audit trail admin** (log des actions: modifications whitelist, connexions, changements config)
+- [ ] Historique des paiements dans l'espace abonné (modèle Payment/Invoice)
+- [ ] Gestion des remboursements Stripe (logique refund dans webhook)
 - [ ] Support plaques étrangères (regex configurable par pays)
-- [ ] Gestion multi-plaques par abonné (actuellement 1 plaque par compte)
-- [ ] Historique des paiements dans l'espace abonné
-- [x] Emails de confirmation / rappel d'expiration / notification gestionnaire
 
 ## Exigences (Requirements)
 
@@ -228,6 +255,10 @@ systemd/                   # (legacy, remplacé par deploy/etc/systemd/)
 | FR9 | Abonnements parking payant (inscription, paiement Stripe, durée configurable) | ✅ Done |
 | FR10 | Sync auto abonnement → whitelist (activation/expiration/annulation) | ✅ Done |
 | FR11 | Gestion plans tarifaires par le gestionnaire (CRUD, durée, prix) | ✅ Done |
+| FR12 | Multi-plaques par abonné | ❌ À faire (1 plaque/compte actuellement) |
+| FR13 | Historique des paiements (modèle Payment/Invoice) | ❌ À faire |
+| FR14 | Logs d'accès consultables sur dashboard (remontée edge → cloud) | ❌ À faire |
+| FR15 | Audit trail admin (log actions, connexions, modifications) | ❌ À faire |
 
 ### Non-fonctionnelles
 | ID | Description | Statut |
@@ -238,12 +269,20 @@ systemd/                   # (legacy, remplacé par deploy/etc/systemd/)
 | NFR4 | Sécurité thermique (séparation capteur/LEDs/CPU) | Design only |
 | NFR5 | Pas de Wi-Fi (PoE/4G uniquement) | ✅ Done |
 | NFR6 | Aucun port entrant | ✅ Done |
+| NFR7 | Protection CSRF sur tous les formulaires | ✅ Done |
+| NFR8 | HTTPS obligatoire + headers sécurité | ⚠️ Headers done, HTTPS = reverse proxy |
+| NFR9 | Politique mot de passe renforcée | ✅ Done |
+| NFR10 | Rate limiting sur toutes les routes auth | ✅ Done |
+| NFR11 | Suite de tests automatisés (pytest) | ✅ Done (86 tests) |
+| NFR12 | Migrations DB versionnées (Alembic) | ✅ Done |
+| NFR13 | Déploiement conteneurisé (Docker + CI/CD) | ✅ Done |
+| NFR14 | Logging structuré + monitoring centralisé | ✅ Done |
 
 ## Commandes utiles
 
 ```bash
 # Web (dev)
-cd web && python run.py                    # http://localhost:8000 (admin/admin)
+cd web && LAPI_ADMIN_USERNAME=admin LAPI_ADMIN_PASSWORD='Admin1234!@#' python run.py
 
 # Edge (test sur fichier)
 cd python && python main.py
@@ -260,7 +299,7 @@ journalctl -u mosquitto -f
 ## Notes techniques
 
 - Python 3.10+ requis (frozen dataclasses, match statements)
-- Web: credentials par défaut admin/admin (changer en prod)
+- Web: admin créé via env vars `LAPI_ADMIN_USERNAME` + `LAPI_ADMIN_PASSWORD` (obligatoire au 1er lancement)
 - Edge MQTT topics locaux: `lapi/whitelist/{sync|add|remove}`, `lapi/ota/update`, `lapi/access/open`
 - Bridge Mosquitto remap: `lapi/{device_id}/{whitelist|ota|access}/X` (cloud) → `lapi/{whitelist|ota|access}/X` (local)
 - Le web et la Jetson NE SONT PAS sur le même réseau directement. Il faut un broker MQTT intermédiaire (cloud ou LAN pour les tests)
@@ -284,3 +323,22 @@ journalctl -u mosquitto -f
 - Annulation: retire la plaque uniquement s'il n'existe pas d'autre abonnement actif sur le même parking
 - Espace abonné public: `/subscribe/parkings`, `/subscribe/parking/{id}`, `/subscribe/account`
 - Dashboard tenant: gestion plans via `/dashboard/parking/{id}/plans`
+- Sécurité: module `security.py` centralise CSRF, headers, rate limiting, validation
+- `LAPI_ENV=production` active les contrôles stricts (SECRET_KEY obligatoire, Stripe webhook obligatoire, password policy sur admin)
+- CSRF: cookie `csrf_token` + champ hidden `csrf_token` dans tous les formulaires POST, rotation à chaque requête POST
+- Headers sécurité: X-Frame-Options DENY, X-Content-Type-Options nosniff, CSP, HSTS (si HTTPS)
+- Rate limiting auth: 5 tentatives / 5 min par IP sur `/login`, `/subscribe/login`, `/subscribe/register`
+- Password policy: min 12 caractères, 1 majuscule, 1 chiffre, 1 caractère spécial
+- Validation entrées: email (regex + longueur), plaque (format SIV AA-123-AA), strings sanitisées (trim + max_length)
+
+## Vulnérabilités connues (à corriger avant prod)
+
+- ~~**CSRF**: aucun token CSRF sur les formulaires POST~~ ✅ Corrigé (middleware + token cookie/form)
+- ~~**Credentials hardcodés**: `admin/admin` dans `config.py`~~ ✅ Corrigé (env vars obligatoires)
+- ~~**SECRET_KEY par défaut**~~ ✅ Corrigé (crash en prod si absent)
+- ~~**Webhook Stripe non vérifié**~~ ✅ Corrigé (rejeté en prod si secret absent)
+- ~~**Injection HTML emails**~~ ✅ Corrigé (`html.escape()` sur toutes les données utilisateur)
+- ~~**Pas de rate limiting sur login**~~ ✅ Corrigé (5 tentatives / 5 min par IP)
+- ~~**Pas de validation d'entrée côté serveur**~~ ✅ Corrigé (longueur, format email, plaque, types)
+- **Mot de passe edge MQTT hardcodé**: `deploy/install.sh:89` contient `lapi-local-secret` en clair
+- **HTTPS**: l'application ne gère pas le TLS elle-même, nécessite un reverse proxy (nginx/caddy) avec Let's Encrypt

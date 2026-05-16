@@ -1,0 +1,61 @@
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      LAPI_ENV: production
+      LAPI_SECRET_KEY: ${LAPI_SECRET_KEY}
+      LAPI_DATABASE_URL: postgresql://lapi:${POSTGRES_PASSWORD}@db:5432/lapi
+      LAPI_ADMIN_USERNAME: ${LAPI_ADMIN_USERNAME}
+      LAPI_ADMIN_PASSWORD: ${LAPI_ADMIN_PASSWORD}
+      LAPI_MQTT_BROKER: mqtt
+      LAPI_MQTT_PORT: "1883"
+      LAPI_MQTT_USERNAME: ""
+      LAPI_MQTT_PASSWORD: ""
+      LAPI_MQTT_USE_TLS: "false"
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      LAPI_SMTP_HOST: ${LAPI_SMTP_HOST:-}
+      LAPI_SMTP_PORT: ${LAPI_SMTP_PORT:-587}
+      LAPI_SMTP_USERNAME: ${LAPI_SMTP_USERNAME:-}
+      LAPI_SMTP_PASSWORD: ${LAPI_SMTP_PASSWORD:-}
+      LAPI_SMTP_FROM: ${LAPI_SMTP_FROM:-noreply@lapi.fr}
+      LAPI_WEB_BASE_URL: ${LAPI_WEB_BASE_URL:-http://localhost:8000}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      mqtt:
+        condition: service_started
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: lapi
+      POSTGRES_USER: lapi
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lapi"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  mqtt:
+    image: eclipse-mosquitto:2
+    ports:
+      - "8883:8883"
+    volumes:
+      - ./deploy/docker/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./deploy/docker/certs:/mosquitto/certs:ro
+      - mqttdata:/mosquitto/data
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  mqttdata:

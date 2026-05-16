@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main, feature/*]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff
+      - run: ruff check web/ python/src/ tests/
+      - run: ruff format --check web/ python/src/ tests/
+
+  test-web:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          pip install -r web/requirements.txt
+          pip install -r requirements-test.txt
+          pip install alembic psycopg2-binary sentry-sdk[fastapi]
+      - name: Run web tests
+        working-directory: web
+        env:
+          LAPI_ENV: development
+          LAPI_SECRET_KEY: ci-test-secret-key
+          LAPI_DATABASE_URL: "sqlite://"
+          LAPI_ADMIN_USERNAME: testadmin
+          LAPI_ADMIN_PASSWORD: "TestAdmin123!@#"
+        run: python -m pytest ../tests/web/ -v --tb=short
+
+  test-edge:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run edge tests
+        run: python -m pytest tests/edge/ -v --tb=short
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [test-web, test-edge]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: docker build -t lapi-web:${{ github.sha }} .
+      - name: Verify health endpoint
+        run: |
+          docker run -d --name lapi-test \
+            -e LAPI_ENV=development \
+            -e LAPI_SECRET_KEY=test-key \
+            -e LAPI_ADMIN_USERNAME=admin \
+            -e "LAPI_ADMIN_PASSWORD=TestAdmin123!@#" \
+            -p 8000:8000 lapi-web:${{ github.sha }}
+          sleep 5
+          curl -f http://localhost:8000/health || (docker logs lapi-test && exit 1)
+          docker stop lapi-test

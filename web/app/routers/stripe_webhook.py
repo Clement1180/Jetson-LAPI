@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..config import STRIPE_WEBHOOK_SECRET, STRIPE_SECRET_KEY
+from ..config import STRIPE_WEBHOOK_SECRET, STRIPE_SECRET_KEY, IS_PRODUCTION
 from ..models import Subscription, SubscriptionStatus, SubscriptionPlan, Subscriber
 from ..subscription_sync import activate_subscription_plates, deactivate_subscription_plates, compute_end_date
 from ..email_service import send_payment_confirmation, send_manager_new_subscription
@@ -27,15 +27,22 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     payload = await request.body()
     sig = request.headers.get("stripe-signature", "")
 
-    try:
-        if STRIPE_WEBHOOK_SECRET:
-            event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
-        else:
-            import json
+    if not STRIPE_WEBHOOK_SECRET:
+        if IS_PRODUCTION:
+            log.error("STRIPE_WEBHOOK_SECRET not set in production, rejecting webhook")
+            return JSONResponse({"error": "webhook secret not configured"}, status_code=500)
+        import json
+        try:
             event = stripe.Event.construct_from(json.loads(payload), stripe.api_key)
-    except (ValueError, stripe.error.SignatureVerificationError) as e:
-        log.warning(f"Webhook signature invalide: {e}")
-        return JSONResponse({"error": "invalid signature"}, status_code=400)
+        except (ValueError, Exception) as e:
+            log.warning(f"Webhook payload invalide: {e}")
+            return JSONResponse({"error": "invalid payload"}, status_code=400)
+    else:
+        try:
+            event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
+        except (ValueError, stripe.error.SignatureVerificationError) as e:
+            log.warning(f"Webhook signature invalide: {e}")
+            return JSONResponse({"error": "invalid signature"}, status_code=400)
 
     if event.type == "checkout.session.completed":
         session = event.data.object
