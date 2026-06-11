@@ -20,8 +20,10 @@ Python 3.11, venv `.venv\Scripts\python.exe`. Branche `LAPI-IR`. Sur ce PC : CPU
 
 ## Port C++ (ROADMAP_CPP.md)
 - Étape 0 faite : oracle `oracle/oracle_40frames.json` (généré par `python -m src.make_oracle`, déterministe, CPU) = référence bit-exacte pour le port
-- Étape 1 faite : squelette `cpp/` (CMake, structure miroir ; io + dict OCR + decode CTC implémentés, cœur en stubs `std::logic_error`) — non buildé sur ce PC (pas de toolchain C++), build cible = Jetson
-- Étape suivante : étape 2, port module par module (ordre : yolo → detect → kalman → ocr → core), valider contre l'oracle
+- Étapes 1-2 faites : port C++ complet dans `cpp/` (CMake, structure miroir, tous modules portés) — JAMAIS COMPILÉ (pas de toolchain C++ sur ce PC), build + validation = sur Jetson
+- Validation : `lapi_oracle` dump JSON → `python tools/compare_oracle.py oracle/oracle_40frames.json cpp_oracle.json` (oracle = CPU, valider en CPU d'abord)
+- Quirks portés exprès : NMSBoxes reçoit (x1,y1,x2,y2) interprété (x,y,w,h) ; Kalman = port manuel filterpy CV_64F forme de Joseph ; astype(int) = troncature vers zéro ; max(key=len) = premier ex æquo
+- Étape suivante : étape 3, build sur Jetson (ORT aarch64 + TensorRT EP), gstreamer caméra, FP16
 
 ## En suspens / pièges
 - `inference_video_ocr.py` = monolithe legacy (comportement différent : stabilisation active, autre clean_plate) — candidat à suppression, non refactorisé volontairement

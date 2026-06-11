@@ -9,7 +9,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # ── OpenCV : fourni par JetPack sur Jetson ────────────────────────────────────
-find_package(OpenCV REQUIRED COMPONENTS core imgproc videoio video highgui)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc videoio video highgui dnn)
 
 # ── ONNX Runtime : pas de find_package officiel partout, on pointe la racine ──
 # -DONNXRUNTIME_ROOT_DIR=/path/to/onnxruntime  (contient include/ et lib/)
@@ -29,8 +29,7 @@ if(NOT ONNXRUNTIME_INCLUDE_DIR OR NOT ONNXRUNTIME_LIB)
   message(FATAL_ERROR "ONNX Runtime introuvable — passer -DONNXRUNTIME_ROOT_DIR=...")
 endif()
 
-add_executable(lapi
-  src/main.cpp
+add_library(lapi_core STATIC
   src/models/yolo.cpp
   src/models/ocr.cpp
   src/pipeline/core.cpp
@@ -40,6 +39,12 @@ add_executable(lapi
   src/io/writer.cpp
   src/io/viz.cpp
 )
+target_include_directories(lapi_core PUBLIC src ${ONNXRUNTIME_INCLUDE_DIR})
+target_link_libraries(lapi_core PUBLIC ${OpenCV_LIBS} ${ONNXRUNTIME_LIB})
 
-target_include_directories(lapi PRIVATE src ${ONNXRUNTIME_INCLUDE_DIR})
-target_link_libraries(lapi PRIVATE ${OpenCV_LIBS} ${ONNXRUNTIME_LIB})
+add_executable(lapi src/main.cpp)
+target_link_libraries(lapi PRIVATE lapi_core)
+
+# Dump JSON des sorties → tools/compare_oracle.py contre l'oracle Python
+add_executable(lapi_oracle src/make_oracle.cpp)
+target_link_libraries(lapi_oracle PRIVATE lapi_core)

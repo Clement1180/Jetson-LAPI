@@ -7,18 +7,18 @@
 #include <vector>
 
 #include <opencv2/core.hpp>
-#include <opencv2/video/tracking.hpp>
 
 #include "detection.hpp"
 #include "models/ocr.hpp"
 #include "models/yolo.hpp"
+#include "pipeline/kalman.hpp"
 
 namespace lapi {
 
 // État persistant entre deux frames. La stabilisation (stabilize.py) n'est pas
 // portée : déjà désactivée dans run_pipeline côté Python.
 struct PipelineState {
-    std::optional<cv::KalmanFilter> kalman;  // créé à la 1re détection
+    std::optional<KalmanQuad> kalman;        // créé à la 1re détection
     int missed = 0;                          // frames consécutives sans détection
     int max_missed = 10;                     // au-delà, filtre réinitialisé
     int frame_count = 0;

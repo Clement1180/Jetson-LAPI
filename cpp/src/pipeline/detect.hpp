@@ -6,7 +6,6 @@
 #include <opencv2/core.hpp>
 
 #include "detection.hpp"
-#include "pipeline/kalman.hpp"
 
 namespace lapi {
 

@@ -1,7 +1,7 @@
-// Point d'entrée — miroir de src/mainvideo.py (vidéo annotée + benchmark).
-// Étape 1 : smoke test — charge modèles + dict, ouvre la vidéo, boucle.
-// La boucle complète s'activera quand run_pipeline sera porté (étape 2).
+// Point d'entrée — miroir de src/mainvideo.py : pipeline complet sur la vidéo,
+// temps moyen par étape en sortie.
 #include <iostream>
+#include <map>
 
 #include "config.hpp"
 #include "io/reader.hpp"
@@ -14,11 +14,12 @@
 int main(int argc, char** argv) {
     using namespace lapi;
 
-    // lapi [video] [yolo.onnx] [ocr.onnx] [en_dict.txt]
+    // lapi [video] [yolo.onnx] [ocr.onnx] [en_dict.txt] [sortie.mp4]
     const std::string video_path = argc > 1 ? argv[1] : config::INPUT_VIDEO;
     const std::string yolo_path = argc > 2 ? argv[2] : config::YOLO_MODEL;
     const std::string ocr_path = argc > 3 ? argv[3] : config::OCR_MODEL;
     const std::string chars_path = argc > 4 ? argv[4] : config::CHARS_PATH;
+    const std::string output_path = argc > 5 ? argv[5] : "";
 
     try {
         Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "lapi");
@@ -32,20 +33,32 @@ int main(int argc, char** argv) {
                   << meta.fps << " fps, " << meta.total << " frames\n";
 
         cv::VideoCapture cap = open_video(video_path);
+        cv::VideoWriter writer;
+        if (!output_path.empty())
+            writer = open_video_writer(output_path, meta.fps, meta.width,
+                                       meta.height);
+
         PipelineState state = make_initial_state();
+        std::map<std::string, double> totals;
         cv::Mat frame;
         int n = 0;
         while (cap.read(frame)) {
             PipelineResult res = run_pipeline(frame, state, yolo, ocr);
-            cv::Mat annotated = draw(frame, res.detections, state.frame_count);
-            (void)annotated;
+            for (const auto& [step, t] : res.times) totals[step] += t;
+            if (writer.isOpened())
+                writer.write(draw(frame, res.detections, state.frame_count));
             ++n;
         }
+        if (writer.isOpened()) writer.release();
+
         std::cout << n << " frames traitées\n";
-    } catch (const std::logic_error& e) {
-        // Stubs étape 2 pas encore portés : le smoke test s'arrête ici.
-        std::cout << "Squelette OK, port incomplet : " << e.what() << "\n";
-        return 0;
+        double total = 0;
+        for (const auto& [step, t] : totals) total += t;
+        for (const auto& [step, t] : totals)
+            std::cout << "  " << step << " : " << t / n * 1000 << " ms/frame\n";
+        if (n > 0 && total > 0)
+            std::cout << "  total : " << total / n * 1000 << " ms/frame ("
+                      << n / total << " FPS)\n";
     } catch (const std::exception& e) {
         std::cerr << "Erreur : " << e.what() << "\n";
         return 1;
