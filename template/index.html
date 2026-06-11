@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>LAPI Parking - Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f6f9; }
+        .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+        .logo { height: 60px; } /* Insère ton logo dans le dossier static/ */
+        .container { display: flex; gap: 20px; }
+        .video-container { position: relative; width: 640px; height: 480px; background: #000; border-radius: 8px; overflow: hidden;}
+        #video-feed { width: 100%; height: 100%; object-fit: cover; }
+        #overlay { position: absolute; top: 0; left: 0; cursor: crosshair; }
+        
+        .side-panel { flex: 1; display: flex; flex-direction: column; gap: 20px; }
+        
+        .plate-box { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; }
+        .plate-box h2 { margin-top: 0; font-size: 1.2rem; color: #333; }
+        .plate-text { font-size: 2.5rem; font-weight: bold; font-family: monospace; letter-spacing: 2px; }
+        .status-granted { color: #2ecc71; }
+        .status-denied { color: #e74c3c; }
+        
+        .admin-box { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .admin-box ul { list-style: none; padding: 0; margin-bottom: 10px; max-height: 200px; overflow-y: auto; }
+        .admin-box li { display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid #eee; }
+        button { background: #3498db; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #2980b9; }
+        .btn-danger { background: #e74c3c; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <!-- Logo en haut (ajoute ton_logo.png dans un dossier appelé `static`) -->
+        <img src="/static/logo.png" alt="Logo" class="logo">
+        <h1>Lecteur de Plaque Automatique</h1>
+    </div>
+
+    <div class="container">
+        <!-- Rectangle de Caméra et tracé de la ROI -->
+        <div class="video-container">
+            <img id="video-feed" src="/video_feed" alt="Video stream">
+            <canvas id="overlay" width="640" height="480"></canvas>
+        </div>
+
+        <div class="side-panel">
+            <!-- Rectangle en haut à droite avec la plaque détectée -->
+            <div class="plate-box">
+                <h2>Plaque Détectée</h2>
+                <div class="plate-text" id="detected-plate">---</div>
+                <div id="plate-status" style="font-size: 1.2rem; font-weight: bold; margin-top:10px;">En attente</div>
+            </div>
+
+            <!-- Bouton et Liste des véhicules enregistrés -->
+            <div class="admin-box">
+                <h2>Plaques Autorisées</h2>
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <input type="text" id="new-plate" placeholder="Ex: AB-123-CD" style="flex:1; padding: 8px;">
+                    <button onclick="addPlate()">Ajouter</button>
+                </div>
+                <ul id="whitelist-ul">
+                    <!-- Généré par Jinja2 pour l'état initial -->
+                    {% for plate in whitelist %}
+                    <li>
+                        <strong>{{ plate }}</strong>
+                        <button class="btn-danger" onclick="removePlate('{{ plate }}')">X</button>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. Gestion de la zone d'intérêt (ROI) avec la souris ---
+        const canvas = document.getElementById('overlay');
+        const ctx = canvas.getContext('2d');
+        let isDrawing = false;
+        let startX, startY;
+        
+        canvas.addEventListener('mousedown', (e) => {
+            isDrawing = true;
+            const rect = canvas.getBoundingClientRect();
+            startX = e.clientX - rect.left;
+            startY = e.clientY - rect.top;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isDrawing) return;
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Nettoyer
+            ctx.strokeStyle = "red";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(startX, startY, mouseX - startX, mouseY - startY); // Dessiner le rectangle
+        });
+
+        canvas.addEventListener('mouseup', async (e) => {
+            isDrawing = false;
+            const rect = canvas.getBoundingClientRect();
+            const endX = e.clientX - rect.left;
+            const endY = e.clientY - rect.top;
+            
+            // Envoyer au serveur la zone d'intérêt
+            await fetch('/set_roi', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ x: Math.min(startX, endX), y: Math.min(startY, endY), w: Math.abs(endX - startX), h: Math.abs(endY - startY) })
+            });
+        });
+
+        // --- 2. Mise à jour de la plaque détectée toutes les secondes ---
+        setInterval(async () => {
+            const res = await fetch('/get_current_plate');
+            const data = await res.json();
+            document.getElementById('detected-plate').innerText = data.plate;
+            
+            const statusDiv = document.getElementById('plate-status');
+            statusDiv.innerText = data.status;
+            statusDiv.className = data.status === "Autorisé" ? "status-granted" : "status-denied";
+        }, 1000);
+
+        // --- 3. Gestion de la liste blanche (Ajout / Suppression) ---
+        async function updateWhitelistUI(data) {
+            const ul = document.getElementById('whitelist-ul');
+            ul.innerHTML = "";
+            data.whitelist.forEach(plate => {
+                ul.innerHTML += `<li><strong>${plate}</strong> <button class="btn-danger" onclick="removePlate('${plate}')">X</button></li>`;
+            });
+        }
+
+        async function addPlate() {
+            const plateInput = document.getElementById('new-plate');
+            const res = await fetch('/add_plate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plate: plateInput.value })
+            });
+            updateWhitelistUI(await res.json());
+            plateInput.value = "";
+        }
+
+        async function removePlate(plateValue) {
+            const res = await fetch('/remove_plate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plate: plateValue })
+            });
+            updateWhitelistUI(await res.json());
+        }
+    </script>
+</body>
+</html>

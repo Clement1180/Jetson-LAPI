@@ -1,23 +1,8 @@
-"""
-LAPI Pipeline - Jetson LAPI Module
+"""Jetson-LAPI — Lecture Automatisée de Plaques d'Immatriculation sur NVIDIA Jetson.
 
-This module provides the core functionality for the LAPI (Latency-Aware Parallel Inference)
-pipeline on NVIDIA Jetson devices.
-
-Author: 
-Date: 
-Version: 1.0.0
+Pipeline : détection YOLO-seg → suivi Kalman → OCR (ONNX Runtime).
 """
 
 __title__ = "jetson-lapi"
 __version__ = "1.0.0"
-__author__ = ""
 __license__ = "MIT"
-
-from . import (
-    io
-)
-
-__all__ = [
-    "io",
-]

@@ -11,6 +11,9 @@ RUN pip3 install --no-cache-dir \
     "numpy<2" \
     onnxruntime-gpu==1.16.3 \
     opencv-python-headless \
-    filterpy
+    filterpy \
+    streamlit
 WORKDIR /app
 COPY . .
+EXPOSE 8501
+CMD ["streamlit", "run", "app.py", "--server.address=0.0.0.0"]
