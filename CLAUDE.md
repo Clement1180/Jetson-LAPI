@@ -18,8 +18,13 @@ Python 3.11, venv `.venv\Scripts\python.exe`. Branche `LAPI-IR`. Sur ce PC : CPU
 - `python server.py` — FastAPI :8000, MJPEG webcam, templates dans `template/` (singulier)
 - Poids : `src/models_weight/{best.onnx, ocr_model.onnx, en_dict.txt}`
 
+## Port C++ (ROADMAP_CPP.md)
+- Étape 0 faite : oracle `oracle/oracle_40frames.json` (généré par `python -m src.make_oracle`, déterministe, CPU) = référence bit-exacte pour le port
+- Étape 1 faite : squelette `cpp/` (CMake, structure miroir ; io + dict OCR + decode CTC implémentés, cœur en stubs `std::logic_error`) — non buildé sur ce PC (pas de toolchain C++), build cible = Jetson
+- Étape suivante : étape 2, port module par module (ordre : yolo → detect → kalman → ocr → core), valider contre l'oracle
+
 ## En suspens / pièges
 - `inference_video_ocr.py` = monolithe legacy (comportement différent : stabilisation active, autre clean_plate) — candidat à suppression, non refactorisé volontairement
 - Doublons non référencés supprimables : `src/best.onnx`, `src/ocr_model.onnx`, `src/en_dict.txt` (copies de models_weight/)
 - Anomalies préservées exprès (ne pas "corriger" sans demande) : % du tableau LaTeX ne somment pas à 100 ; `viz.draw` utilise toujours `COLORS[0]`
-- Refactoring complet non commité (tout en working tree) ; `serveur.py` supprimé (doublon de server.py)
+- `serveur.py` supprimé (doublon de server.py)
